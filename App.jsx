@@ -50,7 +50,7 @@ function cannotAfford(fv){
   return"a nice dinner every week";
 }
 function getPain(pct){
-  if(pct<1) return{col:"#22D469",lbl:"A rounding error 🪶"};
+  if(pct<1) return{col:"#22D469",lbl:"Basically nothing 🪶"};
   if(pct<3) return{col:"#4ADE80",lbl:"Barely a scratch... for now 😏"};
   if(pct<6) return{col:"#A3E635",lbl:"Oh it tingles 👀"};
   if(pct<10)return{col:"#EAB308",lbl:"Oof. There goes a vacation ✈️❌"};
@@ -61,6 +61,13 @@ function getPain(pct){
   if(pct<60)return{col:"#B91C1C",lbl:"Working till 78, bestie 👴⚰️"};
   if(pct<80)return{col:"#991B1B",lbl:"🚨 FINANCIAL CRIMES DETECTED"};
   return      {col:"#7F1D1D",lbl:"☢️ TOTAL RETIREMENT ANNIHILATION"};
+}
+
+// Fisher-Yates shuffle — used to randomize presets each launch
+function shuffle(arr){
+  const a=[...arr];
+  for(let i=a.length-1;i>0;i--){const j=~~(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
+  return a;
 }
 
 /* ═══════════════════════════════ COLORS ══════════════════════════════════════ */
@@ -84,12 +91,12 @@ const CHARS=[
     return[
       `*shuffles in* ${a} on ${i.toUpperCase()}, ${fs}?! That's ${f} from MY retirement. Give. It. Back. RIGHT NOW.`,
       `${f}. That's what this becomes. I could've had ${cant}. But you chose ${i}. I am writing you out of the will.`,
-      `${months} months. You stole ${months} months of retirement for ${i}. I hobbled here from the future just to tell you that.`,
+      `${months} months. You stole ${months} months of MY retirement for ${i}. I hobbled here from the future to tell you that.`,
       `I eat store-brand crackers because ${a}, ${fs}, compounded = ${f}. That was ${cant}. MY FUTURE. GONE.`,
       `*slams walker* ${f.toUpperCase()}!! That's ${cant.toUpperCase()}!! But sure! Enjoy ${i}! I'll be at WALMART GREETING PEOPLE!`,
       `I called to yell. Got voicemail. So I'm HERE, IN PERSON. ${a} = ${f} = no ${cant}. ARE YOU HAPPY NOW.`,
       `Every time you buy ${i} ${fs}, a piece of my ${cant} dies. Today was ${f} worth. I'm not okay.`,
-      `This is fine. Everything is fine. *eye twitch* ${f} is just gone. The ${cant} wasn't that important anyway. *eye twitch*`,
+      `This is fine. Everything is fine. *eye twitch* ${f} is just gone. The ${cant} wasn't that important. *eye twitch*`,
     ][~~(Math.random()*8)];
    }},
   {id:"bro",name:"Finance Bro Kevin",av:"🧢",tag:"Have you heard of index funds?",col:"#4ECDC4",bg:"rgba(78,205,196,.13)",
@@ -159,8 +166,12 @@ const FREQS=[
   {id:"monthly", short:"Mo.",   label:"Monthly" },
   {id:"annually",short:"Yr.",   label:"Yearly"  },
 ];
-const DEF={currentAge:28,retirementAge:65,growthRate:7,inflationRate:3,monthlyExpense:3000,
-           characterId:"grumpy",showPresets:true,randomizeAdvisor:true};
+const DEF={
+  currentAge:28, retirementAge:65,
+  lifeExpectancy:85,  // ← new: used for pain meter denominator
+  growthRate:7, inflationRate:3, monthlyExpense:3000,
+  characterId:"grumpy", showPresets:true, randomizeAdvisor:true,
+};
 
 /* ═══════════════════════════════ PWA ICON ═══════════════════════════════════ */
 function injectPWA(){
@@ -183,7 +194,8 @@ function injectPWA(){
     });
     const blob=new Blob([JSON.stringify({name:"Frugal Calculator",short_name:"Frugal",
       description:"Your future self is watching. And crying.",start_url:".",display:"standalone",
-      background_color:"#07071A",theme_color:"#07071A",icons:[{src:uri,sizes:"192x192",type:"image/svg+xml"}]
+      background_color:"#07071A",theme_color:"#07071A",
+      icons:[{src:uri,sizes:"192x192",type:"image/svg+xml"}]
     })],{type:"application/json"});
     const ml=document.createElement("link");ml.rel="manifest";ml.href=URL.createObjectURL(blob);
     document.head.appendChild(ml);
@@ -202,8 +214,8 @@ function Slider({label,value,min,max,step=1,unit="",onChange,color=C.green}){
         <span style={{color:C.t2,fontSize:13}}>{label}</span>
         {editing
           ?<input autoFocus type="number" defaultValue={value}
-              style={{width:88,padding:"3px 8px",background:"#1A1535",border:`1px solid ${color}`,borderRadius:8,
-                color:C.t1,fontSize:13,...MONO,textAlign:"right",outline:"none"}}
+              style={{width:88,padding:"3px 8px",background:"#1A1535",border:`1px solid ${color}`,
+                borderRadius:8,color:C.t1,fontSize:13,...MONO,textAlign:"right",outline:"none"}}
               onBlur={e=>commit(e.target.value)}
               onKeyDown={e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape")setEditing(false);}}/>
           :<span onClick={()=>setEditing(true)}
@@ -214,7 +226,8 @@ function Slider({label,value,min,max,step=1,unit="",onChange,color=C.green}){
       </div>
       <input type="range" min={min} max={max} step={step} value={value}
         onChange={e=>onChange(+e.target.value)}
-        style={{width:"100%",accentColor:color,background:`linear-gradient(to right,${color} ${pct}%,#1A1535 ${pct}%)`}}/>
+        style={{width:"100%",accentColor:color,
+          background:`linear-gradient(to right,${color} ${pct}%,#1A1535 ${pct}%)`}}/>
     </div>
   );
 }
@@ -227,7 +240,8 @@ function Card({children,accent,style={}}){
   );
 }
 const SL=({children})=>(
-  <div style={{fontSize:10,fontWeight:800,color:C.t3,letterSpacing:1.5,textTransform:"uppercase",marginBottom:14}}>
+  <div style={{fontSize:10,fontWeight:800,color:C.t3,letterSpacing:1.5,
+    textTransform:"uppercase",marginBottom:14}}>
     {children}
   </div>
 );
@@ -239,7 +253,8 @@ function Toggle({value,onChange,label}){
         cursor:"pointer",position:"relative",background:value?C.green:"rgba(255,255,255,.14)",
         transition:"background .2s",flexShrink:0}}>
         <div style={{position:"absolute",top:2,left:value?22:2,width:20,height:20,
-          borderRadius:10,background:"#fff",transition:"left .2s",boxShadow:"0 1px 4px rgba(0,0,0,.4)"}}/>
+          borderRadius:10,background:"#fff",transition:"left .2s",
+          boxShadow:"0 1px 4px rgba(0,0,0,.4)"}}/>
       </button>
     </div>
   );
@@ -248,7 +263,8 @@ function Toggle({value,onChange,label}){
 /* ═══════════════════════════════ PARAM CHECK POPUP ══════════════════════════ */
 const PARAM_MSGS=[
   lc=>({title:"⚠️ Your Future Self Filed a Complaint",
-    body:lc===1?"First visit! Before we calculate your financial regret, are these settings actually you?"
+    body:lc===1
+      ?"First visit! Before we calculate your financial regret, are these settings actually you?"
       :`Launch #${lc}. Your future self requires a settings audit every 10 uses. Compliance is not optional.`}),
   ()=>({title:"📋 Mandatory Regret Audit",
     body:`Your future self rang. Couldn't hear much over the crying, but "CHECK YOUR SETTINGS" came through loud and clear.`}),
@@ -260,18 +276,19 @@ const PARAM_MSGS=[
 function ParamCheckPopup({settings,launchCount,onConfirm,onSettings}){
   const m=PARAM_MSGS[Math.min(~~((launchCount-1)/10),PARAM_MSGS.length-1)](launchCount);
   const rows=[
-    {l:"Your age",v:`${settings.currentAge}`},
-    {l:"Retirement age",v:`${settings.retirementAge}`},
-    {l:"Growth rate",v:`${settings.growthRate}%`},
-    {l:"Inflation",v:`${settings.inflationRate}%`},
-    {l:"Monthly budget",v:usd(settings.monthlyExpense)},
+    {l:"Your age",         v:`${settings.currentAge}`},
+    {l:"Retirement age",   v:`${settings.retirementAge}`},
+    {l:"You expire at",    v:`${settings.lifeExpectancy}`},
+    {l:"Growth rate",      v:`${settings.growthRate}%`},
+    {l:"Inflation",        v:`${settings.inflationRate}%`},
+    {l:"Monthly budget",   v:usd(settings.monthlyExpense)},
   ];
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.88)",display:"flex",
       alignItems:"flex-end",justifyContent:"center",zIndex:300,backdropFilter:"blur(10px)",
       padding:"0 16px 16px",paddingBottom:"max(16px,env(safe-area-inset-bottom))"}}>
-      <div style={{background:"#120F30",border:`1px solid ${C.purple}44`,borderRadius:24,padding:22,
-        width:"100%",maxWidth:400,animation:"slideUp .35s cubic-bezier(.34,1.56,.64,1)"}}>
+      <div style={{background:"#120F30",border:`1px solid ${C.purple}44`,borderRadius:24,
+        padding:22,width:"100%",maxWidth:400,animation:"slideUp .35s cubic-bezier(.34,1.56,.64,1)"}}>
         <div style={{fontSize:16,fontWeight:800,marginBottom:8,color:C.t1}}>{m.title}</div>
         <div style={{fontSize:13,color:C.t2,lineHeight:1.65,marginBottom:16}}>{m.body}</div>
         <div style={{background:"rgba(255,255,255,.04)",borderRadius:14,padding:14,marginBottom:18}}>
@@ -296,14 +313,18 @@ function ParamCheckPopup({settings,launchCount,onConfirm,onSettings}){
   );
 }
 
-/* ═══════════════════════════════ RESULTS PANEL (slides from right) ══════════ */
+/* ═══════════════════════════════ RESULTS PANEL ══════════════════════════════ */
 function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRoast}){
   if(!result||result.nominal<=0)return null;
   const{nominal,real,months,yrs,amount}=result;
   const multi=amount>0?Math.round(nominal/amount):0;
-  const painPct=Math.min(100,(months/((settings.retirementAge-settings.currentAge)*12))*100);
+
+  // ── Pain meter denominator: months the user will actually SPEND in retirement ──
+  const retirementMonths=Math.max(1,(settings.lifeExpectancy-settings.retirementAge)*12);
+  const painPct=Math.min(100,(months/retirementMonths)*100);
   const{col:painCol,lbl:painLbl}=getPain(painPct);
   const cant=cannotAfford(nominal);
+
   return(
     <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,
       background:`linear-gradient(160deg,${C.bg} 0%,#100A2A 100%)`,
@@ -311,16 +332,15 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
       transition:"transform 0.32s cubic-bezier(0.25,0.46,0.45,0.94)",
       zIndex:150,overflowY:"auto",overflowX:"hidden",maxWidth:430,margin:"0 auto"}}>
 
-      {/* Sticky header — big green back button */}
+      {/* Sticky header with prominent green back button */}
       <div style={{position:"sticky",top:0,background:"rgba(7,7,26,.96)",backdropFilter:"blur(20px)",
         padding:"12px 16px",borderBottom:`1px solid ${C.border}`,
         display:"flex",alignItems:"center",gap:12,zIndex:1}}>
-        <button onClick={onClose} style={{
-          background:"rgba(16,240,122,.14)", border:`1px solid ${C.green}55`,
-          borderRadius:12, width:46, height:46,
+        <button onClick={onClose} style={{background:"rgba(16,240,122,.14)",
+          border:`1px solid ${C.green}55`,borderRadius:12,width:46,height:46,
           display:"flex",alignItems:"center",justifyContent:"center",
-          cursor:"pointer", color:C.green, fontSize:22, flexShrink:0,
-          fontFamily:"inherit", fontWeight:700}}>←</button>
+          cursor:"pointer",color:C.green,fontSize:22,flexShrink:0,
+          fontFamily:"inherit",fontWeight:700}}>←</button>
         <div>
           <div style={{fontSize:13,fontWeight:800,color:C.t1}}>Retirement Impact</div>
           <div style={{fontSize:11,color:C.t3}}>Your future self is not doing okay</div>
@@ -328,15 +348,18 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
       </div>
 
       <div style={{padding:"0 16px 100px"}}>
-        {/* Character quote bubble */}
-        <div style={{margin:"14px 0",background:char.bg,border:`1px solid ${char.col}44`,borderRadius:20,padding:16}}>
+        {/* Character quote */}
+        <div style={{margin:"14px 0",background:char.bg,
+          border:`1px solid ${char.col}44`,borderRadius:20,padding:16}}>
           <div style={{display:"flex",gap:12,alignItems:"flex-start",marginBottom:12}}>
             <span style={{fontSize:34,flexShrink:0,lineHeight:1}}>{char.av}</span>
             <div>
               <div style={{fontSize:9,color:char.col,fontWeight:800,letterSpacing:1.5,marginBottom:4}}>
                 {char.name.toUpperCase()}
               </div>
-              <div style={{fontSize:13,color:"#E2E8F0",lineHeight:1.6,fontStyle:"italic"}}>"{quote}"</div>
+              <div style={{fontSize:13,color:"#E2E8F0",lineHeight:1.6,fontStyle:"italic"}}>
+                "{quote}"
+              </div>
             </div>
           </div>
           <button onClick={onReRoast} style={{padding:"5px 12px",fontSize:11,
@@ -344,7 +367,7 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
             color:C.t2,cursor:"pointer",fontFamily:"inherit"}}>🎲 Roast me again</button>
         </div>
 
-        {/* Big FV number */}
+        {/* Big FV */}
         <div style={{textAlign:"center",padding:"18px 0 14px"}}>
           <div style={{fontSize:12,color:C.t2,marginBottom:5}}>
             Future value in {yrs} yrs · {settings.growthRate}% return
@@ -357,14 +380,14 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
           <div style={{fontSize:12,color:C.t3,marginTop:6}}>Today's dollars: {usd(real)}</div>
         </div>
 
-        {/* Stats grid */}
+        {/* Stats */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
           <div style={{background:"rgba(251,146,60,.09)",border:"1px solid rgba(251,146,60,.22)",
             borderRadius:14,padding:12,textAlign:"center"}}>
             <div style={{fontSize:20}}>⏳</div>
             <div style={{...MONO,fontSize:26,fontWeight:700,color:C.orange,lineHeight:1.1}}>{months}</div>
             <div style={{fontSize:10,color:C.orange,fontWeight:700}}>MONTHS STOLEN</div>
-            <div style={{fontSize:11,color:C.t2}}>from retirement</div>
+            <div style={{fontSize:11,color:C.t2}}>of retirement</div>
           </div>
           <div style={{background:"rgba(16,240,122,.07)",border:"1px solid rgba(16,240,122,.22)",
             borderRadius:14,padding:12,textAlign:"center"}}>
@@ -385,7 +408,7 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
           <div style={{fontSize:11,color:"#92400E",marginTop:4}}>worth {usd(nominal)} at retirement</div>
         </div>
 
-        {/* Pain meter — track uses rgba so it's always visible against dark bg */}
+        {/* ── Pain meter — denominator is retirement months (retire → death) ── */}
         <div style={{marginBottom:16}}>
           <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:7}}>
             <span style={{color:C.t2}}>💀 Retirement Pain Meter</span>
@@ -396,7 +419,9 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
               background:`linear-gradient(90deg,${C.green},${painCol})`,
               transition:"width 1s cubic-bezier(.34,1.56,.64,1)"}}/>
           </div>
-          <div style={{fontSize:11,color:C.t3,marginTop:5}}>{Math.round(painPct)}% of your total retirement</div>
+          <div style={{fontSize:11,color:C.t3,marginTop:5}}>
+            {months} of your {retirementMonths} retirement months ({Math.round(painPct)}%)
+          </div>
         </div>
 
         <button onClick={onShare} style={{width:"100%",padding:14,
@@ -419,23 +444,27 @@ function ShareModal({result,quote,char,settings,onClose}){
   const text=[
     "💸 Frugal Calculator","",
     `My ${freqLbl} ${item} = ${usd(nominal)} at retirement.`,
-    `That's ${months} months of income GONE! 😱`,"",
+    `That's ${months} months of retirement income GONE! 😱`,"",
     `${char.av} "${quote.substring(0,100)}..."`,""," 📲 Frugal Calculator",
   ].join("\n");
-  const copy=()=>navigator.clipboard.writeText(text).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);});
+  const copy=()=>navigator.clipboard.writeText(text)
+    .then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);});
   return(
     <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:"fixed",inset:0,
-      background:"rgba(0,0,0,.92)",display:"flex",alignItems:"center",justifyContent:"center",
-      padding:20,zIndex:200,backdropFilter:"blur(14px)"}}>
-      <div style={{background:"#0D0A25",border:`1px solid ${C.border}`,borderRadius:24,padding:24,
-        width:"100%",maxWidth:360}}>
+      background:"rgba(0,0,0,.92)",display:"flex",alignItems:"center",
+      justifyContent:"center",padding:20,zIndex:200,backdropFilter:"blur(14px)"}}>
+      <div style={{background:"#0D0A25",border:`1px solid ${C.border}`,
+        borderRadius:24,padding:24,width:"100%",maxWidth:360}}>
         <div style={{background:`linear-gradient(135deg,#0A0818,${char.col}18)`,
-          border:`1px solid ${char.col}44`,borderRadius:16,padding:20,marginBottom:16,textAlign:"center"}}>
+          border:`1px solid ${char.col}44`,borderRadius:16,padding:20,
+          marginBottom:16,textAlign:"center"}}>
           <div style={{fontSize:11,color:char.col,fontWeight:800,letterSpacing:2,marginBottom:6}}>
             💸 FRUGAL CALCULATOR
           </div>
           <div style={{fontSize:12,color:C.t3,marginBottom:8}}>{freqLbl} {item}</div>
-          <div style={{...MONO,fontSize:36,fontWeight:700,color:C.green,letterSpacing:-1}}>{usd(nominal)}</div>
+          <div style={{...MONO,fontSize:36,fontWeight:700,color:C.green,letterSpacing:-1}}>
+            {usd(nominal)}
+          </div>
           <div style={{fontSize:11,color:C.t3,marginBottom:10}}>at retirement · {yrs} years</div>
           <div style={{padding:"8px 14px",background:"rgba(251,146,60,.12)",
             border:"1px solid rgba(251,146,60,.3)",borderRadius:10,
@@ -456,8 +485,8 @@ function ShareModal({result,quote,char,settings,onClose}){
         {typeof navigator!=="undefined"&&navigator.share&&(
           <button onClick={()=>navigator.share({title:"Frugal Calculator",text}).catch(()=>{})}
             style={{width:"100%",padding:13,marginBottom:8,background:"rgba(255,255,255,.04)",
-              border:`1px solid ${C.border}`,borderRadius:14,color:C.t1,fontWeight:700,
-              cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>📤 Share</button>
+              border:`1px solid ${C.border}`,borderRadius:14,color:C.t1,
+              fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>📤 Share</button>
         )}
         <button onClick={onClose} style={{width:"100%",padding:11,background:"none",
           border:`1px solid ${C.border}`,borderRadius:14,color:C.t3,
@@ -470,39 +499,74 @@ function ShareModal({result,quote,char,settings,onClose}){
 /* ═══════════════════════════════ SETTINGS TAB ═══════════════════════════════ */
 function SettingsTab({settings:s,onChange,onExport,onImport,launchCount,onForcePopup,onResetLaunches}){
   const upd=(k,v)=>onChange(p=>({...p,[k]:v}));
+
+  // Funny life expectancy sub-labels
+  const lifeQuip=
+    s.lifeExpectancy<=70?"You okay? That seems low. Talk to someone. 💙"
+    :s.lifeExpectancy<=75?"Bold. Boldly pessimistic. Planning is still smart."
+    :s.lifeExpectancy<=80?"Fair. Statistically reasonable. Carry on."
+    :s.lifeExpectancy<=85?"Optimistic! Good. We like the spirit. 💪"
+    :s.lifeExpectancy<=90?"You feel great and it shows. Respect."
+    :s.lifeExpectancy<=95?"Okay immortal, calm down. But also, good for you."
+    :"100+? At this point you're just flexing. We respect it. 👑";
+
   return(
     <div style={{paddingTop:10}}>
       <Card>
         <SL>📊 Your Profile</SL>
-        <Slider label="Current Age" value={s.currentAge} min={18} max={Math.min(69,s.retirementAge-1)} onChange={v=>upd("currentAge",v)} color={C.cyan}/>
-        <Slider label="Retirement Age" value={s.retirementAge} min={s.currentAge+1} max={80} onChange={v=>upd("retirementAge",v)} color={C.cyan}/>
-        <div style={{...MONO,fontSize:11,color:C.t3}}>📅 {s.retirementAge-s.currentAge} years of compounding ahead</div>
+        <Slider label="Current Age" value={s.currentAge} min={18}
+          max={Math.min(69,s.retirementAge-1)} onChange={v=>upd("currentAge",v)} color={C.cyan}/>
+        <Slider label="Retirement Age" value={s.retirementAge} min={s.currentAge+1}
+          max={Math.min(s.lifeExpectancy-1,80)} onChange={v=>upd("retirementAge",v)} color={C.cyan}/>
+
+        {/* ── Life expectancy: funny label + reactive quip ── */}
+        <Slider
+          label="⚰️ Planned Checkout Age"
+          value={s.lifeExpectancy}
+          min={s.retirementAge+1} max={100}
+          onChange={v=>upd("lifeExpectancy",v)}
+          color="#94A3B8"/>
+        <div style={{fontSize:11,color:C.t3,marginTop:-12,marginBottom:4,lineHeight:1.6,fontStyle:"italic"}}>
+          {lifeQuip}
+        </div>
+        <div style={{...MONO,fontSize:11,color:C.t3,marginTop:8}}>
+          📅 {s.retirementAge-s.currentAge} yrs until retirement ·{" "}
+          {s.lifeExpectancy-s.retirementAge} yrs in retirement
+        </div>
       </Card>
 
       <Card>
         <SL>💰 Investment Assumptions</SL>
-        <Slider label="Annual Growth Rate" value={s.growthRate} min={1} max={15} step={0.5} unit="%" onChange={v=>upd("growthRate",v)}/>
+        <Slider label="Annual Growth Rate" value={s.growthRate} min={1} max={15} step={0.5}
+          unit="%" onChange={v=>upd("growthRate",v)}/>
         <div style={{fontSize:11,color:C.t3,marginTop:-12,marginBottom:16,lineHeight:1.6}}>
           S&P 500 historical avg: ~10% nominal / ~7% real (after inflation)
         </div>
-        <Slider label="Inflation Rate" value={s.inflationRate} min={0} max={8} step={0.5} unit="%" onChange={v=>upd("inflationRate",v)} color={C.orange}/>
-        <Slider label="Monthly Retirement Budget" value={s.monthlyExpense} min={500} max={10000} step={100} unit="$" onChange={v=>upd("monthlyExpense",v)} color={C.purple}/>
-        <div style={{fontSize:11,color:C.t3,marginTop:-10}}>"Months stolen" = Future Value ÷ this budget</div>
+        <Slider label="Inflation Rate" value={s.inflationRate} min={0} max={8} step={0.5}
+          unit="%" onChange={v=>upd("inflationRate",v)} color={C.orange}/>
+        <Slider label="Monthly Retirement Budget" value={s.monthlyExpense} min={500}
+          max={10000} step={100} unit="$" onChange={v=>upd("monthlyExpense",v)} color={C.purple}/>
+        <div style={{fontSize:11,color:C.t3,marginTop:-10}}>
+          "Months stolen" = Future Value ÷ this monthly budget
+        </div>
       </Card>
 
       <Card>
         <SL>🎭 Your Financial Advisor</SL>
-        <Toggle value={s.randomizeAdvisor} onChange={v=>upd("randomizeAdvisor",v)} label="🎲 Randomize advisor each roast (default)"/>
+        <Toggle value={s.randomizeAdvisor} onChange={v=>upd("randomizeAdvisor",v)}
+          label="🎲 Randomize advisor each roast (default)"/>
         {!s.randomizeAdvisor&&(
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:4}}>
             {CHARS.map(c=>(
-              <button key={c.id} onClick={()=>upd("characterId",c.id)} style={{padding:"12px 8px",cursor:"pointer",
-                textAlign:"center",border:"none",background:s.characterId===c.id?c.bg:"rgba(255,255,255,.03)",
-                outline:`2px solid ${s.characterId===c.id?c.col:"transparent"}`,borderRadius:14,
-                color:C.t1,fontFamily:"inherit",transition:"all .15s",
+              <button key={c.id} onClick={()=>upd("characterId",c.id)} style={{padding:"12px 8px",
+                cursor:"pointer",textAlign:"center",border:"none",
+                background:s.characterId===c.id?c.bg:"rgba(255,255,255,.03)",
+                outline:`2px solid ${s.characterId===c.id?c.col:"transparent"}`,
+                borderRadius:14,color:C.t1,fontFamily:"inherit",transition:"all .15s",
                 transform:s.characterId===c.id?"scale(1.02)":"scale(1)"}}>
                 <div style={{fontSize:26}}>{c.av}</div>
-                <div style={{fontSize:11,fontWeight:700,marginTop:4,color:s.characterId===c.id?c.col:C.t2}}>{c.name}</div>
+                <div style={{fontSize:11,fontWeight:700,marginTop:4,
+                  color:s.characterId===c.id?c.col:C.t2}}>{c.name}</div>
                 <div style={{fontSize:9,color:C.t3,marginTop:3,lineHeight:1.3}}>{c.tag}</div>
               </button>
             ))}
@@ -512,18 +576,19 @@ function SettingsTab({settings:s,onChange,onExport,onImport,launchCount,onForceP
 
       <Card>
         <SL>🖥️ Display</SL>
-        <Toggle value={s.showPresets} onChange={v=>upd("showPresets",v)} label="Show quick-tap spending presets"/>
+        <Toggle value={s.showPresets} onChange={v=>upd("showPresets",v)}
+          label="Show quick-tap spending presets"/>
       </Card>
 
       <Card>
         <SL>💾 Data</SL>
         <div style={{display:"flex",gap:10,marginBottom:10}}>
           <button onClick={onExport} style={{flex:1,padding:10,background:"rgba(16,240,122,.06)",
-            border:`1px solid ${C.green}33`,borderRadius:11,color:C.green,fontWeight:700,
-            cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>📤 Export JSON</button>
+            border:`1px solid ${C.green}33`,borderRadius:11,color:C.green,
+            fontWeight:700,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>📤 Export JSON</button>
           <button onClick={onImport} style={{flex:1,padding:10,background:"rgba(251,146,60,.06)",
-            border:`1px solid ${C.orange}33`,borderRadius:11,color:C.orange,fontWeight:700,
-            cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>📥 Import JSON</button>
+            border:`1px solid ${C.orange}33`,borderRadius:11,color:C.orange,
+            fontWeight:700,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>📥 Import JSON</button>
         </div>
         <div style={{fontSize:11,color:C.t3,textAlign:"center"}}>Settings auto-save to this device</div>
       </Card>
@@ -537,13 +602,16 @@ function SettingsTab({settings:s,onChange,onExport,onImport,launchCount,onForceP
         </div>
       </Card>
 
+      {/* ── Updated math section with corrected pain meter formula ── */}
       <Card>
         <SL>ℹ️ The Math</SL>
         <div style={{...MONO,fontSize:11,color:C.t3,lineHeight:2.1}}>
-          <div>One-time:    FV = PV × (1+r)ⁿ</div>
-          <div>Recurring:   FV = PMT × ((1+r)ⁿ−1) / r</div>
-          <div>Real return: (1+nominal) / (1+inflation) − 1</div>
-          <div>Months stolen = FV ÷ monthly budget</div>
+          <div>One-time:       FV = PV × (1+r)ⁿ</div>
+          <div>Recurring:      FV = PMT × ((1+r)ⁿ−1) / r</div>
+          <div>Real return:    (1+nominal) / (1+inflation) − 1</div>
+          <div>Months stolen:  FV ÷ monthly budget</div>
+          <div>Retire months:  (checkout age − retire age) × 12</div>
+          <div>Pain %:         months stolen ÷ retire months</div>
         </div>
       </Card>
 
@@ -553,9 +621,10 @@ function SettingsTab({settings:s,onChange,onExport,onImport,launchCount,onForceP
           Launch count: <span style={{color:C.t1,fontWeight:700}}>{launchCount}</span>
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
-          <button onClick={onForcePopup} style={{padding:"8px 12px",background:"rgba(251,146,60,.1)",
-            border:`1px solid ${C.orange}44`,borderRadius:10,color:C.orange,
-            fontSize:11,cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>🔔 Force Popup</button>
+          <button onClick={onForcePopup} style={{padding:"8px 12px",
+            background:"rgba(251,146,60,.1)",border:`1px solid ${C.orange}44`,
+            borderRadius:10,color:C.orange,fontSize:11,cursor:"pointer",
+            fontWeight:700,fontFamily:"inherit"}}>🔔 Force Popup</button>
           <button onClick={onResetLaunches} style={{padding:"8px 12px",background:C.surface,
             border:`1px solid ${C.border}`,borderRadius:10,color:C.t2,
             fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Reset Count</button>
@@ -568,8 +637,8 @@ function SettingsTab({settings:s,onChange,onExport,onImport,launchCount,onForceP
           <summary style={{fontSize:11,color:C.t3,cursor:"pointer",marginBottom:8,userSelect:"none"}}>
             ▶ View settings JSON
           </summary>
-          <pre style={{...MONO,fontSize:10,color:C.t3,background:"rgba(0,0,0,.3)",padding:10,
-            borderRadius:10,overflow:"auto",maxHeight:180,marginTop:8}}>
+          <pre style={{...MONO,fontSize:10,color:C.t3,background:"rgba(0,0,0,.3)",
+            padding:10,borderRadius:10,overflow:"auto",maxHeight:180,marginTop:8}}>
             {JSON.stringify(s,null,2)}
           </pre>
         </details>
@@ -580,24 +649,27 @@ function SettingsTab({settings:s,onChange,onExport,onImport,launchCount,onForceP
 
 /* ═══════════════════════════════ CALC TAB ═══════════════════════════════════ */
 function CalcTab({dispStr,freq,presetId,showPresets,pendingOp,onPress,onFreq,onPreset,onShowResults,resultPreview}){
-  //  Grid is 4 cols. Last row: 0(span2) | . | =
-  //  "=" has no gridColumn override → lands naturally at col 4 = bottom-right ✓
+  // Shuffle presets once per mount (i.e. each app launch)
+  const [orderedPresets] = useState(()=>shuffle(PRESETS));
+
   const BTNS=[
     {l:"AC",t:"AC"}, {l:"+/-",t:"fn"}, {l:"%",t:"fn"}, {l:"÷",t:"op"},
     {l:"7",t:"d"},   {l:"8",t:"d"},    {l:"9",t:"d"},  {l:"×",t:"op"},
     {l:"4",t:"d"},   {l:"5",t:"d"},    {l:"6",t:"d"},  {l:"−",t:"op"},
     {l:"1",t:"d"},   {l:"2",t:"d"},    {l:"3",t:"d"},  {l:"+",t:"op"},
     {l:"0",t:"z"},   {l:".",t:"d"},    {l:"=",t:"eq"},
+    // "=" has no gridColumn override → flows to col 4 = bottom-right ✓
   ];
   const isActive=l=>pendingOp===(l==="−"?"-":l);
   const bStyle=(t,l)=>{
-    const base={border:"none",cursor:"pointer",borderRadius:13,fontWeight:700,fontFamily:"inherit",
-      display:"flex",alignItems:"center",justifyContent:l==="0"?"flex-start":"center",
+    const base={border:"none",cursor:"pointer",borderRadius:13,fontWeight:700,
+      fontFamily:"inherit",display:"flex",alignItems:"center",
+      justifyContent:l==="0"?"flex-start":"center",
       userSelect:"none",height:56,fontSize:19,transition:"opacity .1s,transform .08s"};
     if(t==="eq") return{...base,background:`linear-gradient(135deg,${C.green},#059669)`,color:"#000",fontSize:22};
     if(t==="z")  return{...base,background:"#1A1830",color:C.t1,gridColumn:"span 2",paddingLeft:24};
     if(t==="op") return{...base,background:isActive(l)?"#5B21B6":"#2D1B4E",color:isActive(l)?C.t1:C.purple};
-    if(t==="AC") return{...base,background:"#3D1212",color:"#FC8181"}; // dark red AC
+    if(t==="AC") return{...base,background:"#3D1212",color:"#FC8181"};
     if(t==="fn") return{...base,background:"#1E1B3A",color:C.t2};
     return{...base,background:"#1A1830",color:C.t1};
   };
@@ -608,19 +680,19 @@ function CalcTab({dispStr,freq,presetId,showPresets,pendingOp,onPress,onFreq,onP
     else onPress(b.t,b.l);
   };
 
-  const ctaTag = resultPreview
-    ? resultPreview.nominal>=1e6 ? "💀 Million-dollar mistake detected"
-    : resultPreview.nominal>=1e5 ? "😱 Retirement damage: severe"
-    : resultPreview.nominal>=1e4 ? "🤕 Brace yourself..."
-    : "👀 You sure about this?"
-    : null;
+  const ctaTag=resultPreview
+    ?resultPreview.nominal>=1e6?"💀 Million-dollar mistake detected"
+    :resultPreview.nominal>=1e5?"😱 Retirement damage: severe"
+    :resultPreview.nominal>=1e4?"🤕 Brace yourself..."
+    :"👀 You sure about this?"
+    :null;
 
   return(
     <div>
-      {/* Quick-tap presets */}
+      {/* Quick-tap presets — randomized order each launch */}
       {showPresets&&(
         <div style={{display:"flex",overflowX:"auto",gap:7,padding:"8px 0",scrollbarWidth:"none"}}>
-          {PRESETS.map(p=>(
+          {orderedPresets.map(p=>(
             <button key={p.id} onClick={()=>onPreset(p)} style={{flexShrink:0,display:"flex",
               alignItems:"center",gap:4,padding:"5px 10px",cursor:"pointer",whiteSpace:"nowrap",
               fontSize:11,border:"none",
@@ -634,7 +706,7 @@ function CalcTab({dispStr,freq,presetId,showPresets,pendingOp,onPress,onFreq,onP
         </div>
       )}
 
-      {/* Frequency selector — inactive text uses C.t2 so it's clearly readable */}
+      {/* Frequency selector */}
       <div style={{display:"flex",gap:5,margin:"8px 0"}}>
         {FREQS.map(f=>(
           <button key={f.id} onClick={()=>onFreq(f.id)} style={{flex:1,padding:"7px 2px",
@@ -675,16 +747,16 @@ function CalcTab({dispStr,freq,presetId,showPresets,pendingOp,onPress,onFreq,onP
         ))}
       </div>
 
-      {/* ── Big prominent CTA — shows future value in large font ── */}
+      {/* ── CTA button: big dollar, animated chevron arrow ── */}
       <button onClick={onShowResults} disabled={!resultPreview} style={{
         width:"100%",
-        padding:resultPreview?"16px 16px":"13px",
+        padding:resultPreview?"16px":"13px",
         background:resultPreview
           ?"linear-gradient(135deg,rgba(16,240,122,.13),rgba(167,139,250,.07))"
           :"rgba(255,255,255,.03)",
         border:`1.5px solid ${resultPreview?C.green+"66":C.border}`,
         borderRadius:16,cursor:resultPreview?"pointer":"default",fontFamily:"inherit",
-        display:"flex",flexDirection:"column",alignItems:"center",gap:3,
+        display:"flex",flexDirection:"column",alignItems:"center",gap:4,
         textAlign:"center",transition:"all .2s",
         boxShadow:resultPreview?`0 0 28px rgba(16,240,122,.08)`:"none",
       }}>
@@ -692,13 +764,28 @@ function CalcTab({dispStr,freq,presetId,showPresets,pendingOp,onPress,onFreq,onP
           <>
             <span style={{fontSize:12,color:C.t2,fontWeight:600}}>{ctaTag}</span>
             <span style={{...MONO,
-              fontSize:resultPreview.nominal>=1e7?30:resultPreview.nominal>=1e6?34:resultPreview.nominal>=1e5?38:42,
+              fontSize:resultPreview.nominal>=1e7?30
+                :resultPreview.nominal>=1e6?34
+                :resultPreview.nominal>=1e5?38:42,
               fontWeight:700,letterSpacing:-2,lineHeight:1.1,color:C.green}}>
               {usd(resultPreview.nominal)}
             </span>
-            <span style={{fontSize:12,color:C.t2,fontWeight:600}}>
-              in {resultPreview.yrs} yrs &nbsp;→&nbsp; tap to witness the carnage
-            </span>
+            {/* Animated chevron row */}
+            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
+              <span style={{fontSize:11,color:C.t2}}>in {resultPreview.yrs} yrs</span>
+              <div style={{display:"flex",gap:2,alignItems:"center"}}>
+                {[0,1,2].map(i=>(
+                  <div key={i} style={{
+                    width:7,height:7,borderTop:`2px solid ${C.green}`,
+                    borderRight:`2px solid ${C.green}`,
+                    transform:"rotate(45deg)",
+                    opacity:0.4+(i*0.3),
+                    animation:`chevronPulse 1.2s ease-in-out ${i*0.15}s infinite`,
+                  }}/>
+                ))}
+              </div>
+              <span style={{fontSize:11,color:C.t2}}>tap to witness the carnage</span>
+            </div>
           </>
         ):(
           <span style={{fontSize:13,color:C.t3}}>Enter an amount to calculate impact</span>
@@ -716,20 +803,20 @@ export default function App(){
   });
   useEffect(()=>{try{localStorage.setItem("fc_v1",JSON.stringify(settings));}catch{}},[settings]);
 
-  const[tab,       setTab]       = useState("calc");
-  const[display,   setDisplay]   = useState("0");
-  const[stored,    setStored]    = useState(null);
-  const[pendingOp, setPendingOp] = useState(null);
-  const[fresh,     setFresh]     = useState(false);
-  const[freq,      setFreq]      = useState("once");
-  const[presetId,  setPresetId]  = useState(null);
-  const[result,    setResult]    = useState(null);
-  const[quote,     setQuote]     = useState("");
-  const[activeChar,setActiveChar]= useState(CHARS[0]);
-  const[showResults,setShowResults]=useState(false);
-  const[showShare, setShowShare] = useState(false);
-  const[showPC,    setShowPC]    = useState(false);
-  const[launchCount,setLaunchCount]=useState(0);
+  const[tab,        setTab]        = useState("calc");
+  const[display,    setDisplay]    = useState("0");
+  const[stored,     setStored]     = useState(null);
+  const[pendingOp,  setPendingOp]  = useState(null);
+  const[fresh,      setFresh]      = useState(false);
+  const[freq,       setFreq]       = useState("once");
+  const[presetId,   setPresetId]   = useState(null);
+  const[result,     setResult]     = useState(null);
+  const[quote,      setQuote]      = useState("");
+  const[activeChar, setActiveChar] = useState(CHARS[0]);
+  const[showResults,setShowResults]= useState(false);
+  const[showShare,  setShowShare]  = useState(false);
+  const[showPC,     setShowPC]     = useState(false);
+  const[launchCount,setLaunchCount]= useState(0);
 
   useEffect(()=>{
     injectPWA();
@@ -741,7 +828,6 @@ export default function App(){
     }catch{}
   },[]);
 
-  // Auto-calc FV on any input change
   useEffect(()=>{
     const amount=parseFloat(display);
     if(!amount||amount<=0){setResult(null);return;}
@@ -764,7 +850,6 @@ export default function App(){
 
   useEffect(()=>{if(result?.nominal>0)reRoast();},[result?.nominal,settings.characterId,settings.randomizeAdvisor]);// eslint-disable-line
 
-  // Calculator
   const press=useCallback((type,val)=>{
     switch(type){
       case"AC":setDisplay("0");setStored(null);setPendingOp(null);setFresh(false);break;
@@ -789,12 +874,12 @@ export default function App(){
         if(pendingOp===null||stored===null)break;
         const res=doCalc(stored,parseFloat(display),pendingOp);
         const str=String(parseFloat(res.toFixed(10)));
-        setDisplay(str==="-0"?"0":str);setStored(null);setPendingOp(null);setFresh(true);break;
+        setDisplay(str==="-0"?"0":str);
+        setStored(null);setPendingOp(null);setFresh(true);break;
       }
     }
   },[display,stored,pendingOp,fresh]);
 
-  // Keyboard via refs (single persistent listener)
   const pressRef=useRef(press), freshRef=useRef(fresh);
   useEffect(()=>{pressRef.current=press;},[press]);
   useEffect(()=>{freshRef.current=fresh;},[fresh]);
@@ -830,7 +915,8 @@ export default function App(){
   };
   const selectPreset=p=>{
     const same=p.id===presetId;setPresetId(same?null:p.id);
-    if(!same){setDisplay(String(p.amount));setFreq(p.freq);setStored(null);setPendingOp(null);setFresh(false);}
+    if(!same){setDisplay(String(p.amount));setFreq(p.freq);
+      setStored(null);setPendingOp(null);setFresh(false);}
   };
 
   return(
@@ -846,6 +932,10 @@ export default function App(){
         details>summary{list-style:none}
         details>summary::-webkit-details-marker{display:none}
         @keyframes slideUp{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes chevronPulse{
+          0%,100%{opacity:.3;transform:rotate(45deg) translateX(0)}
+          50%{opacity:1;transform:rotate(45deg) translateX(3px)}
+        }
       `}</style>
 
       <div style={{minHeight:"100vh",maxWidth:430,margin:"0 auto",
@@ -853,13 +943,11 @@ export default function App(){
         color:C.t1,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
         display:"flex",flexDirection:"column"}}>
 
-        {/* App header */}
         <div style={{padding:"14px 16px 6px",flexShrink:0}}>
           <div style={{fontSize:19,fontWeight:900,letterSpacing:-.5}}>💸 Frugal Calculator</div>
           <div style={{fontSize:10,color:C.t3,marginTop:1}}>Your future self is watching. And crying.</div>
         </div>
 
-        {/* Scrollable body */}
         <div style={{flex:1,overflowY:"auto",padding:"2px 14px 80px"}}>
           {tab==="calc"
             ?<CalcTab
@@ -877,14 +965,13 @@ export default function App(){
           }
         </div>
 
-        {/* Bottom navigation */}
         <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",
           width:"100%",maxWidth:430,zIndex:100,background:"rgba(7,7,26,.97)",
           backdropFilter:"blur(20px)",borderTop:`1px solid ${C.border}`,
           display:"flex",paddingBottom:"max(env(safe-area-inset-bottom,0px),8px)"}}>
           {[{id:"calc",icon:"🧮",label:"Calculator"},{id:"settings",icon:"⚙️",label:"Settings"}].map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,background:"none",border:"none",
-              cursor:"pointer",color:tab===t.id?C.green:C.t3,
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,background:"none",
+              border:"none",cursor:"pointer",color:tab===t.id?C.green:C.t3,
               padding:"10px 0 6px",display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
               <span style={{fontSize:22}}>{t.icon}</span>
               <span style={{fontSize:10,fontWeight:tab===t.id?700:400}}>{t.label}</span>
@@ -892,20 +979,15 @@ export default function App(){
           ))}
         </div>
 
-        {/* Slide-in results panel */}
         {result&&(
           <ResultsPanel visible={showResults} onClose={()=>setShowResults(false)}
             result={result} quote={quote} char={activeChar} settings={settings}
             onShare={()=>setShowShare(true)} onReRoast={reRoast}/>
         )}
-
-        {/* Share modal */}
         {showShare&&result&&(
           <ShareModal result={result} quote={quote} char={activeChar}
             settings={settings} onClose={()=>setShowShare(false)}/>
         )}
-
-        {/* Param check popup */}
         {showPC&&(
           <ParamCheckPopup settings={settings} launchCount={launchCount}
             onConfirm={()=>setShowPC(false)}
