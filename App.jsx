@@ -15,9 +15,9 @@ function calcFV({amount,freq,currentAge,retirementAge,growthRate,inflationRate})
     real:rrp>0?amount*((1+rrp)**n-1)/rrp:amount*n,yrs
   };
 }
-const usd  = n => new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(n||0);
-const usd2 = n => new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2}).format(n||0);
-const short = n => {
+const usd  = n=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(n||0);
+const usd2 = n=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2}).format(n||0);
+const short = n=>{
   if(!n||!isFinite(n)||n<0)return"$0";
   if(n>=1e9)return`$${(n/1e9).toFixed(2)}B`;
   if(n>=1e6)return`$${(n/1e6).toFixed(2)}M`;
@@ -28,7 +28,7 @@ function fmtDisp(raw){
   if(!raw||raw==="0")return"$0";
   if(raw==="-0")return"$0";
   if(raw.endsWith(".")){return(raw.startsWith("-")?"-$":"$")+(raw.startsWith("-")?raw.slice(1):raw);}
-  const num=parseFloat(raw); if(isNaN(num))return raw;
+  const num=parseFloat(raw);if(isNaN(num))return raw;
   const dot=raw.indexOf(".");
   if(dot===-1)return usd(num);
   const dec=raw.length-dot-1;
@@ -40,7 +40,7 @@ function cannotAfford(fv){
   if(fv>=1e6) return"a vacation home outright";
   if(fv>=500000)return"a full house down payment";
   if(fv>=200000)return"a brand-new Tesla Model S";
-  if(fv>=100000)return"one year of private school tuition";
+  if(fv>=100000)return"a year of private school tuition";
   if(fv>=50000) return"a fully-loaded SUV";
   if(fv>=20000) return"a dream trip to Japan, first class";
   if(fv>=10000) return"a full kitchen renovation";
@@ -49,38 +49,44 @@ function cannotAfford(fv){
   if(fv>=500)   return"a month of groceries";
   return"a nice dinner every week";
 }
-function getPain(pct){
-  if(pct<1) return{col:"#22D469",lbl:"Basically nothing 🪶"};
-  if(pct<3) return{col:"#4ADE80",lbl:"Barely a scratch... for now 😏"};
-  if(pct<6) return{col:"#A3E635",lbl:"Oh it tingles 👀"};
-  if(pct<10)return{col:"#EAB308",lbl:"Oof. There goes a vacation ✈️❌"};
-  if(pct<15)return{col:"#F59E0B",lbl:"That was a new laptop 💻🔥"};
-  if(pct<22)return{col:"#F97316",lbl:"A whole car. Just... gone 🚗💨"};
-  if(pct<32)return{col:"#EF4444",lbl:"Half a year of rent. POOF 🔥"};
-  if(pct<45)return{col:"#DC2626",lbl:"Retiring 2 years later. Enjoy 🕰️"};
-  if(pct<60)return{col:"#B91C1C",lbl:"Working till 78, bestie 👴⚰️"};
-  if(pct<80)return{col:"#991B1B",lbl:"🚨 FINANCIAL CRIMES DETECTED"};
+
+/* ─── Two-mode pain severity ─────────────────────────────────────────────── */
+// Mode A: FV < 1 month's budget → compare to a single retirement paycheck
+function getPainSubMonthly(pct){ // pct = (FV / monthlyBudget) * 100, range 0–100
+  if(pct<10) return{col:"#22D469",lbl:"Pocket change... in retirement terms 🪶"};
+  if(pct<25) return{col:"#86EFAC",lbl:"A quarter of your first paycheck 🤏"};
+  if(pct<50) return{col:"#EAB308",lbl:"Half a retirement paycheck 😬"};
+  if(pct<75) return{col:"#F97316",lbl:"Three-quarters of a paycheck. Yikes. 😤"};
+  return      {col:"#EF4444",lbl:"Almost a full retirement paycheck gone 😱"};
+}
+// Mode B: FV ≥ 1 month's budget → compare to the total retirement span
+function getPainMultiMonth(pct){ // pct = (months stolen / retirement months) * 100
+  if(pct<1)  return{col:"#22D469",lbl:"Barely a rounding error 🪶"};
+  if(pct<3)  return{col:"#4ADE80",lbl:"Barely a scratch... for now 😏"};
+  if(pct<8)  return{col:"#A3E635",lbl:"You'll feel that in 30 years 👀"};
+  if(pct<15) return{col:"#EAB308",lbl:"There goes a vacation ✈️❌"};
+  if(pct<25) return{col:"#F59E0B",lbl:"Months of freedom, evaporated 🚗💨"};
+  if(pct<40) return{col:"#F97316",lbl:"A year+ of retirement. Gone. 🔥"};
+  if(pct<55) return{col:"#EF4444",lbl:"Retiring significantly later 🕰️"};
+  if(pct<70) return{col:"#DC2626",lbl:"Working till you drop 👴⚰️"};
+  if(pct<85) return{col:"#991B1B",lbl:"🚨 FINANCIAL CRIMES DETECTED"};
   return      {col:"#7F1D1D",lbl:"☢️ TOTAL RETIREMENT ANNIHILATION"};
 }
 
-// Fisher-Yates shuffle — used to randomize presets each launch
 function shuffle(arr){
   const a=[...arr];
   for(let i=a.length-1;i>0;i--){const j=~~(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
   return a;
 }
 
-/* ═══════════════════════════════ COLORS ══════════════════════════════════════ */
+/* ═══════════════════════════════ COLORS & MONO ═══════════════════════════════ */
 const C={
-  green:"#10F07A", purple:"#A78BFA", orange:"#FB923C",
-  red:"#F87171",   gold:"#FCD34D",   cyan:"#22D3EE",
-  bg:"#07071A",    surface:"rgba(255,255,255,.05)", border:"rgba(255,255,255,.09)",
-  t1:"#F1F5F9",   // bright — primary text
-  t2:"#94A3B8",   // medium — secondary labels, inactive controls
-  t3:"#64748B",   // subtle — hints, sub-labels (still readable)
-  t4:"#4B5563",   // whisper — used only for truly decorative/minor text
+  green:"#10F07A",purple:"#A78BFA",orange:"#FB923C",
+  red:"#F87171",  gold:"#FCD34D", cyan:"#22D3EE",
+  bg:"#07071A",   surface:"rgba(255,255,255,.05)",border:"rgba(255,255,255,.09)",
+  t1:"#F1F5F9", t2:"#94A3B8", t3:"#64748B", t4:"#4B5563",
 };
-const MONO = {fontFamily:"'SF Mono','Fira Code',Consolas,monospace"};
+const MONO={fontFamily:"'SF Mono','Fira Code',Consolas,monospace"};
 
 /* ═══════════════════════════════ DATA ═══════════════════════════════════════ */
 const CHARS=[
@@ -91,12 +97,12 @@ const CHARS=[
     return[
       `*shuffles in* ${a} on ${i.toUpperCase()}, ${fs}?! That's ${f} from MY retirement. Give. It. Back. RIGHT NOW.`,
       `${f}. That's what this becomes. I could've had ${cant}. But you chose ${i}. I am writing you out of the will.`,
-      `${months} months. You stole ${months} months of MY retirement for ${i}. I hobbled here from the future to tell you that.`,
+      `${months} months. You stole ${months} months of MY retirement for ${i}. I hobbled here from the future just to tell you.`,
       `I eat store-brand crackers because ${a}, ${fs}, compounded = ${f}. That was ${cant}. MY FUTURE. GONE.`,
       `*slams walker* ${f.toUpperCase()}!! That's ${cant.toUpperCase()}!! But sure! Enjoy ${i}! I'll be at WALMART GREETING PEOPLE!`,
       `I called to yell. Got voicemail. So I'm HERE, IN PERSON. ${a} = ${f} = no ${cant}. ARE YOU HAPPY NOW.`,
-      `Every time you buy ${i} ${fs}, a piece of my ${cant} dies. Today was ${f} worth. I'm not okay.`,
-      `This is fine. Everything is fine. *eye twitch* ${f} is just gone. The ${cant} wasn't that important. *eye twitch*`,
+      `Every time you buy ${i} ${fs}, a piece of my ${cant} dies. Today was ${f} worth. I am not okay.`,
+      `Everything is fine. *eye twitch* ${f} is just gone. The ${cant} wasn't important anyway. *eye twitch*`,
     ][~~(Math.random()*8)];
    }},
   {id:"bro",name:"Finance Bro Kevin",av:"🧢",tag:"Have you heard of index funds?",col:"#4ECDC4",bg:"rgba(78,205,196,.13)",
@@ -104,14 +110,14 @@ const CHARS=[
     const i=label||"that",a=usd2(amount),f=short(fv),cant=cannotAfford(fv);
     const fs=freq==="daily"?"daily":freq==="weekly"?"weekly":freq==="monthly"?"monthly":"";
     return[
-      `Wow. Not everyone needs ${cant}. Really inspirational choosing ${a} on ${i} ${fs} over ${f}. Truly. 👏`,
+      `Not everyone needs ${cant}. Really inspirational choosing ${a} on ${i} ${fs} over ${f}. Truly. 👏`,
       `Bold — sacrificing ${f} for ${a} ${fs} on ${i}. Buffett would never, but your risk tolerance is... unique. 😊`,
-      `I have a 34-slide deck: why ${a} ${fs} compounds to ${f}. Slide 1: Stop buying ${i}. Slide 34: I told you so.`,
-      `Just to clarify: you traded ${cant} (valued at ${f}) for ${i}. I'm not upset. Just 📊 deeply, professionally concerned.`,
-      `${f} opportunity cost. The nursing home looked nice though. Communal TV. Shuffleboard Tuesdays. 🙂`,
-      `Fun fact: ${a} invested ${fs} becomes ${f}. That's ${cant}. You spent it on ${i} instead. Not fun.`,
-      `I need you to look at this compound interest chart. *points at ${f}* See this line? That was YOU. Gone.`,
-      `New lesson: ${a} × compound interest = ${cant} you won't have. Class dismissed. No extra credit. 📈`,
+      `I have a 34-slide deck: why ${a} ${fs} compounds to ${f}. Slide 1: Stop buying ${i}. Slide 34: Told you.`,
+      `You traded ${cant} (${f}) for ${i}. I'm not upset. Just 📊 deeply, professionally concerned.`,
+      `${f} opportunity cost. Nursing home looked nice. Communal TV. Shuffleboard Tuesdays. Cozy. 🙂`,
+      `Fun fact: ${a} invested ${fs} becomes ${f}. That's ${cant}. You chose ${i} instead. Not fun.`,
+      `Look at this compound interest chart. *points at ${f}* See this line? That was YOU. Gone now.`,
+      `${a} × compound interest = ${cant} you won't have. Class dismissed. No extra credit. 📈`,
     ][~~(Math.random()*8)];
    }},
   {id:"grandma",name:"Disappointed Grandma",av:"👵",tag:"Not mad. Just... disappointed.",col:"#C77DFF",bg:"rgba(199,125,255,.13)",
@@ -119,13 +125,13 @@ const CHARS=[
     const i=label||"this",a=usd2(amount),f=short(fv),cant=cannotAfford(fv);
     const fs=freq==="daily"?"every morning":freq==="weekly"?"every week":freq==="monthly"?"every month":"";
     return[
-      `Oh sweetie... *heavy sigh* ...Grandpa skipped lunch for 12 years so you could have ${cant}. But enjoy ${i}, dear.`,
-      `I'm not mad. *knits 40% faster* I'm just thinking about those ${months} retirement months you gave away. Quietly.`,
+      `Oh sweetie... *heavy sigh* ...Grandpa skipped lunch for 12 years so you could have ${cant}. Enjoy ${i}.`,
+      `I'm not mad. *knits 40% faster* Just thinking about those ${months} retirement months you gave away.`,
       `We reused rubber bands. Saved tin foil. Never wasted a crumb. And here you are — ${a} on ${i} ${fs}.`,
-      `That ${f} was going to be your golden years. ${cant.charAt(0).toUpperCase()+cant.slice(1)}. A little joy. But here we are.`,
-      `*looks at ${i}* *looks at ${f}* *looks at ${i}* *looks at ${f}* *very long sigh* ...Have you called your mother?`,
-      `Grandpa ate sandwiches for 20 years to build savings. You have ${a} ${fs} for ${i}. The irony.`,
-      `I raised you to know ${a} ${fs} is ${f} is ${cant}. And yet. AND YET. Here we are. With ${i}.`,
+      `That ${f} was your golden years. ${cant.charAt(0).toUpperCase()+cant.slice(1)}. A little joy. But here we are.`,
+      `*looks at ${i}* *looks at ${f}* *looks at ${i}* *very long sigh* ...Have you called your mother?`,
+      `Grandpa ate sandwiches for 20 years. You have ${a} ${fs} for ${i}. The irony is not lost on me.`,
+      `I raised you to know ${a} ${fs} is ${f} is ${cant}. AND YET. Here we are. With ${i}.`,
       `Don't tell me how much you spent. *you tell her* ...Oh. *sets down knitting* Oh. *knits FURIOUSLY*`,
     ][~~(Math.random()*8)];
    }},
@@ -133,31 +139,31 @@ const CHARS=[
    q({amount,fv,months,label,freq}){
     const i=label||"this trinket",a=usd2(amount),f=short(fv),cant=cannotAfford(fv);
     return[
-      `O WRETCHED MORTAL! For ${a} in silver thou hast condemned thyself to ${months} forsaken moons of poverty! THE COMPOUND GODS WEEP!`,
-      `Hark! What fool — to trade ${cant} (worth ${f}!) for today's fleeting ${i}?! The great ledger records this in RED INK!`,
+      `O WRETCHED MORTAL! For ${a} in silver thou hast condemned thyself to ${months} forsaken moons of poverty!`,
+      `Hark! What fool — to trade ${cant} (worth ${f}!) for today's fleeting ${i}?! The compound gods weep!`,
       `All the world's a stage, thou hast chosen: "Person Who Cannot Afford ${cant.charAt(0).toUpperCase()+cant.slice(1)}." ${f} — exit.`,
       `Act I: ${a} on ${i}. Act II: ${f} disappears. Act III: No ${cant}. Act IV: Working at 78. *lute plays*`,
-      `'Twas only ${a}! cried the mortal! Yet ${f} heard and wept for it shall never be! TO BE FRUGAL — THOU CHOSE NOT!`,
-      `Methinks ${f} doth vanish like morning dew upon the cold stones of thy ${i}-filled future. ALAS AND ALACK!`,
-      `Thus the cosmic accountant tallies: ${a} × time × compound interest = ${f} = ${cant} = GONE. *slams abacus*`,
-      `Prithee reconsider! For ${f} is not just coin — 'tis ${cant}! 'Tis ${months} moons of rest! 'Tis EVERYTHING! *collapses*`,
+      `'Twas only ${a}! cried the mortal! Yet ${f} wept for it shall never be! TO BE FRUGAL — THOU CHOSE NOT!`,
+      `Methinks ${f} doth vanish like morning dew upon the cold stones of thy ${i}-filled future. ALAS!`,
+      `The cosmic accountant tallies: ${a} × time × compound interest = ${f} = ${cant} = GONE. *slams abacus*`,
+      `For ${f} is not just coin — 'tis ${cant}! 'Tis ${months} moons of rest! 'Tis EVERYTHING! *collapses*`,
     ][~~(Math.random()*8)];
    }},
 ];
 
 const PRESETS=[
-  {id:"latte",   e:"☕", label:"Daily Latte",   amount:6,    freq:"daily"  },
-  {id:"netflix", e:"📺", label:"Netflix",        amount:15.99,freq:"monthly"},
-  {id:"airpods", e:"🎧", label:"AirPods Pro",    amount:249,  freq:"once"  },
-  {id:"brunch",  e:"🥑", label:"Brunch",         amount:45,   freq:"weekly" },
-  {id:"pizza",   e:"🍕", label:"Pizza Night",    amount:30,   freq:"weekly" },
-  {id:"sneakers",e:"👟", label:"Sneakers",       amount:150,  freq:"once"  },
-  {id:"bar",     e:"🍺", label:"Bar Night",      amount:80,   freq:"weekly" },
-  {id:"trip",    e:"✈️", label:"Weekend Trip",   amount:500,  freq:"once"  },
-  {id:"iphone",  e:"📱", label:"New iPhone",     amount:1099, freq:"once"  },
-  {id:"car",     e:"🚗", label:"Car Payment",    amount:450,  freq:"monthly"},
-  {id:"gym",     e:"💪", label:"Gym",            amount:50,   freq:"monthly"},
-  {id:"eats",    e:"🛵", label:"Uber Eats/wk",  amount:35,   freq:"weekly" },
+  {id:"latte",   e:"☕",label:"Daily Latte",   amount:6,    freq:"daily"  },
+  {id:"netflix", e:"📺",label:"Netflix",        amount:15.99,freq:"monthly"},
+  {id:"airpods", e:"🎧",label:"AirPods Pro",    amount:249,  freq:"once"  },
+  {id:"brunch",  e:"🥑",label:"Brunch",         amount:45,   freq:"weekly" },
+  {id:"pizza",   e:"🍕",label:"Pizza Night",    amount:30,   freq:"weekly" },
+  {id:"sneakers",e:"👟",label:"Sneakers",       amount:150,  freq:"once"  },
+  {id:"bar",     e:"🍺",label:"Bar Night",      amount:80,   freq:"weekly" },
+  {id:"trip",    e:"✈️",label:"Weekend Trip",   amount:500,  freq:"once"  },
+  {id:"iphone",  e:"📱",label:"New iPhone",     amount:1099, freq:"once"  },
+  {id:"car",     e:"🚗",label:"Car Payment",    amount:450,  freq:"monthly"},
+  {id:"gym",     e:"💪",label:"Gym",            amount:50,   freq:"monthly"},
+  {id:"eats",    e:"🛵",label:"Uber Eats/wk",  amount:35,   freq:"weekly" },
 ];
 const FREQS=[
   {id:"once",    short:"1×",    label:"One-time"},
@@ -167,10 +173,9 @@ const FREQS=[
   {id:"annually",short:"Yr.",   label:"Yearly"  },
 ];
 const DEF={
-  currentAge:28, retirementAge:65,
-  lifeExpectancy:85,  // ← new: used for pain meter denominator
-  growthRate:7, inflationRate:3, monthlyExpense:3000,
-  characterId:"grumpy", showPresets:true, randomizeAdvisor:true,
+  currentAge:28,retirementAge:65,lifeExpectancy:85,
+  growthRate:7,inflationRate:3,monthlyExpense:3000,
+  characterId:"grumpy",showPresets:true,randomizeAdvisor:true,
 };
 
 /* ═══════════════════════════════ PWA ICON ═══════════════════════════════════ */
@@ -190,11 +195,13 @@ function injectPWA(){
     </svg>`;
     const uri=`data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
     [["apple-touch-icon",""],["icon","image/svg+xml"]].forEach(([rel,type])=>{
-      const l=document.createElement("link");l.rel=rel;if(type)l.type=type;l.href=uri;document.head.appendChild(l);
+      const l=document.createElement("link");l.rel=rel;if(type)l.type=type;l.href=uri;
+      document.head.appendChild(l);
     });
-    const blob=new Blob([JSON.stringify({name:"Frugal Calculator",short_name:"Frugal",
-      description:"Your future self is watching. And crying.",start_url:".",display:"standalone",
-      background_color:"#07071A",theme_color:"#07071A",
+    const blob=new Blob([JSON.stringify({
+      name:"Frugal Calculator",short_name:"Frugal",
+      description:"Your future self is watching. And crying.",
+      start_url:".",display:"standalone",background_color:"#07071A",theme_color:"#07071A",
       icons:[{src:uri,sizes:"192x192",type:"image/svg+xml"}]
     })],{type:"application/json"});
     const ml=document.createElement("link");ml.rel="manifest";ml.href=URL.createObjectURL(blob);
@@ -241,9 +248,7 @@ function Card({children,accent,style={}}){
 }
 const SL=({children})=>(
   <div style={{fontSize:10,fontWeight:800,color:C.t3,letterSpacing:1.5,
-    textTransform:"uppercase",marginBottom:14}}>
-    {children}
-  </div>
+    textTransform:"uppercase",marginBottom:14}}>{children}</div>
 );
 function Toggle({value,onChange,label}){
   return(
@@ -252,36 +257,34 @@ function Toggle({value,onChange,label}){
       <button onClick={()=>onChange(!value)} style={{width:44,height:24,borderRadius:12,border:"none",
         cursor:"pointer",position:"relative",background:value?C.green:"rgba(255,255,255,.14)",
         transition:"background .2s",flexShrink:0}}>
-        <div style={{position:"absolute",top:2,left:value?22:2,width:20,height:20,
-          borderRadius:10,background:"#fff",transition:"left .2s",
-          boxShadow:"0 1px 4px rgba(0,0,0,.4)"}}/>
+        <div style={{position:"absolute",top:2,left:value?22:2,width:20,height:20,borderRadius:10,
+          background:"#fff",transition:"left .2s",boxShadow:"0 1px 4px rgba(0,0,0,.4)"}}/>
       </button>
     </div>
   );
 }
 
-/* ═══════════════════════════════ PARAM CHECK POPUP ══════════════════════════ */
+/* ═══════════════════════════════ PARAM CHECK ════════════════════════════════ */
 const PARAM_MSGS=[
   lc=>({title:"⚠️ Your Future Self Filed a Complaint",
-    body:lc===1
-      ?"First visit! Before we calculate your financial regret, are these settings actually you?"
+    body:lc===1?"First visit! Before we calculate your financial regret, are these settings actually you?"
       :`Launch #${lc}. Your future self requires a settings audit every 10 uses. Compliance is not optional.`}),
   ()=>({title:"📋 Mandatory Regret Audit",
-    body:`Your future self rang. Couldn't hear much over the crying, but "CHECK YOUR SETTINGS" came through loud and clear.`}),
+    body:`Your future self rang. Couldn't hear much over the crying, but "CHECK YOUR SETTINGS" came through loud.`}),
   ()=>({title:"👴 Certified Letter from Future You",
-    body:`"ARE THOSE SETTINGS STILL CORRECT?? I'm eating crackers at 74. Please. Just. Verify. The. Settings."`}),
+    body:`"ARE THOSE SETTINGS CORRECT?? I'm eating crackers at 74. Please. Just. Verify. The. Settings."`}),
   lc=>({title:"🔔 Biennial Wellness Check",
     body:`${lc} launches in and we STILL haven't confirmed you're not pretending to be 28 forever. Are you?`}),
 ];
 function ParamCheckPopup({settings,launchCount,onConfirm,onSettings}){
   const m=PARAM_MSGS[Math.min(~~((launchCount-1)/10),PARAM_MSGS.length-1)](launchCount);
   const rows=[
-    {l:"Your age",         v:`${settings.currentAge}`},
-    {l:"Retirement age",   v:`${settings.retirementAge}`},
-    {l:"You expire at",    v:`${settings.lifeExpectancy}`},
-    {l:"Growth rate",      v:`${settings.growthRate}%`},
-    {l:"Inflation",        v:`${settings.inflationRate}%`},
-    {l:"Monthly budget",   v:usd(settings.monthlyExpense)},
+    {l:"Your age",v:`${settings.currentAge}`},
+    {l:"Retirement age",v:`${settings.retirementAge}`},
+    {l:"You expire at",v:`${settings.lifeExpectancy}`},
+    {l:"Growth rate",v:`${settings.growthRate}%`},
+    {l:"Inflation",v:`${settings.inflationRate}%`},
+    {l:"Monthly budget",v:usd(settings.monthlyExpense)},
   ];
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.88)",display:"flex",
@@ -319,10 +322,26 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
   const{nominal,real,months,yrs,amount}=result;
   const multi=amount>0?Math.round(nominal/amount):0;
 
-  // ── Pain meter denominator: months the user will actually SPEND in retirement ──
+  // ── Two-mode pain meter ──────────────────────────────────────────
   const retirementMonths=Math.max(1,(settings.lifeExpectancy-settings.retirementAge)*12);
-  const painPct=Math.min(100,(months/retirementMonths)*100);
-  const{col:painCol,lbl:painLbl}=getPain(painPct);
+  const isSubMonthly=nominal<settings.monthlyExpense;
+
+  let painPct, painSeverity, painScaleLabel, painDetailLabel;
+  if(isSubMonthly){
+    // Scale: 0–100% of ONE retirement paycheck
+    painPct=Math.min(99,(nominal/settings.monthlyExpense)*100);
+    painSeverity=getPainSubMonthly(painPct);
+    painScaleLabel="Monthly Scale";
+    painDetailLabel=`${Math.round(painPct)}% of your ${usd(settings.monthlyExpense)}/mo retirement budget`;
+  }else{
+    // Scale: 0–100% of TOTAL retirement span
+    const msStolen=nominal/settings.monthlyExpense;
+    painPct=Math.min(100,(msStolen/retirementMonths)*100);
+    painSeverity=getPainMultiMonth(painPct);
+    painScaleLabel="Retirement Scale";
+    painDetailLabel=`${Math.round(nominal/settings.monthlyExpense)} of your ${retirementMonths} retirement months (${Math.round(painPct)}%)`;
+  }
+  const{col:painCol,lbl:painLbl}=painSeverity;
   const cant=cannotAfford(nominal);
 
   return(
@@ -332,7 +351,7 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
       transition:"transform 0.32s cubic-bezier(0.25,0.46,0.45,0.94)",
       zIndex:150,overflowY:"auto",overflowX:"hidden",maxWidth:430,margin:"0 auto"}}>
 
-      {/* Sticky header with prominent green back button */}
+      {/* Sticky header */}
       <div style={{position:"sticky",top:0,background:"rgba(7,7,26,.96)",backdropFilter:"blur(20px)",
         padding:"12px 16px",borderBottom:`1px solid ${C.border}`,
         display:"flex",alignItems:"center",gap:12,zIndex:1}}>
@@ -348,7 +367,7 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
       </div>
 
       <div style={{padding:"0 16px 100px"}}>
-        {/* Character quote */}
+        {/* Quote bubble */}
         <div style={{margin:"14px 0",background:char.bg,
           border:`1px solid ${char.col}44`,borderRadius:20,padding:16}}>
           <div style={{display:"flex",gap:12,alignItems:"flex-start",marginBottom:12}}>
@@ -372,27 +391,44 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
           <div style={{fontSize:12,color:C.t2,marginBottom:5}}>
             Future value in {yrs} yrs · {settings.growthRate}% return
           </div>
-          <div style={{...MONO,
-            fontSize:nominal>9999999?30:nominal>999999?36:48,
+          <div style={{...MONO,fontSize:nominal>9999999?30:nominal>999999?36:48,
             fontWeight:700,color:C.green,letterSpacing:-2,lineHeight:1}}>
             {usd(nominal)}
           </div>
           <div style={{fontSize:12,color:C.t3,marginTop:6}}>Today's dollars: {usd(real)}</div>
         </div>
 
-        {/* Stats */}
+        {/* Stats grid — left pill adapts to sub-monthly vs multi-month */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
-          <div style={{background:"rgba(251,146,60,.09)",border:"1px solid rgba(251,146,60,.22)",
-            borderRadius:14,padding:12,textAlign:"center"}}>
-            <div style={{fontSize:20}}>⏳</div>
-            <div style={{...MONO,fontSize:26,fontWeight:700,color:C.orange,lineHeight:1.1}}>{months}</div>
-            <div style={{fontSize:10,color:C.orange,fontWeight:700}}>MONTHS STOLEN</div>
-            <div style={{fontSize:11,color:C.t2}}>of retirement</div>
-          </div>
+          {isSubMonthly?(
+            // Sub-monthly: show % of one paycheck
+            <div style={{background:"rgba(251,146,60,.09)",border:"1px solid rgba(251,146,60,.22)",
+              borderRadius:14,padding:12,textAlign:"center"}}>
+              <div style={{fontSize:20}}>📅</div>
+              <div style={{...MONO,fontSize:22,fontWeight:700,color:C.orange,lineHeight:1.1}}>
+                {Math.round(painPct)}%
+              </div>
+              <div style={{fontSize:10,color:C.orange,fontWeight:700}}>OF ONE MONTH</div>
+              <div style={{fontSize:11,color:C.t2}}>retirement budget</div>
+            </div>
+          ):(
+            // Multi-month: show months stolen
+            <div style={{background:"rgba(251,146,60,.09)",border:"1px solid rgba(251,146,60,.22)",
+              borderRadius:14,padding:12,textAlign:"center"}}>
+              <div style={{fontSize:20}}>⏳</div>
+              <div style={{...MONO,fontSize:26,fontWeight:700,color:C.orange,lineHeight:1.1}}>
+                {Math.round(nominal/settings.monthlyExpense)}
+              </div>
+              <div style={{fontSize:10,color:C.orange,fontWeight:700}}>MONTHS STOLEN</div>
+              <div style={{fontSize:11,color:C.t2}}>of retirement</div>
+            </div>
+          )}
           <div style={{background:"rgba(16,240,122,.07)",border:"1px solid rgba(16,240,122,.22)",
             borderRadius:14,padding:12,textAlign:"center"}}>
             <div style={{fontSize:20}}>🚀</div>
-            <div style={{...MONO,fontSize:26,fontWeight:700,color:C.green,lineHeight:1.1}}>{multi}×</div>
+            <div style={{...MONO,fontSize:26,fontWeight:700,color:C.green,lineHeight:1.1}}>
+              {multi}×
+            </div>
             <div style={{fontSize:10,color:C.green,fontWeight:700}}>GROWTH</div>
             <div style={{fontSize:11,color:C.t2}}>if invested now</div>
           </div>
@@ -401,17 +437,23 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
         {/* What you could've had */}
         <div style={{background:"rgba(252,211,77,.07)",border:"1px solid rgba(252,211,77,.18)",
           borderRadius:16,padding:14,marginBottom:12}}>
-          <div style={{fontSize:10,color:C.gold,fontWeight:700,marginBottom:5}}>💎 WHAT YOU COULD'VE HAD</div>
+          <div style={{fontSize:10,color:C.gold,fontWeight:700,marginBottom:5}}>
+            💎 WHAT YOU COULD'VE HAD
+          </div>
           <div style={{fontSize:15,color:"#FEF3C7",fontWeight:700}}>
             👉 {cant.charAt(0).toUpperCase()+cant.slice(1)}
           </div>
           <div style={{fontSize:11,color:"#92400E",marginTop:4}}>worth {usd(nominal)} at retirement</div>
         </div>
 
-        {/* ── Pain meter — denominator is retirement months (retire → death) ── */}
+        {/* ── Two-mode pain meter ── */}
         <div style={{marginBottom:16}}>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:7}}>
-            <span style={{color:C.t2}}>💀 Retirement Pain Meter</span>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",
+            fontSize:11,marginBottom:7}}>
+            <span style={{color:C.t2}}>
+              💀 Pain Meter
+              <span style={{fontSize:9,color:C.t3,marginLeft:6}}>· {painScaleLabel}</span>
+            </span>
             <span style={{color:painCol,fontWeight:700,fontSize:10}}>{painLbl}</span>
           </div>
           <div style={{background:"rgba(255,255,255,.12)",borderRadius:99,height:10,overflow:"hidden"}}>
@@ -419,9 +461,7 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
               background:`linear-gradient(90deg,${C.green},${painCol})`,
               transition:"width 1s cubic-bezier(.34,1.56,.64,1)"}}/>
           </div>
-          <div style={{fontSize:11,color:C.t3,marginTop:5}}>
-            {months} of your {retirementMonths} retirement months ({Math.round(painPct)}%)
-          </div>
+          <div style={{fontSize:11,color:C.t3,marginTop:5}}>{painDetailLabel}</div>
         </div>
 
         <button onClick={onShare} style={{width:"100%",padding:14,
@@ -441,8 +481,7 @@ function ShareModal({result,quote,char,settings,onClose}){
   const freqLbl=FREQS.find(f=>f.id===freq)?.label.toLowerCase()||"";
   const item=presetObj?`${presetObj.e} ${presetObj.label}`:usd2(amount);
   const[copied,setCopied]=useState(false);
-  const text=[
-    "💸 Frugal Calculator","",
+  const text=["💸 Frugal Calculator","",
     `My ${freqLbl} ${item} = ${usd(nominal)} at retirement.`,
     `That's ${months} months of retirement income GONE! 😱`,"",
     `${char.av} "${quote.substring(0,100)}..."`,""," 📲 Frugal Calculator",
@@ -456,8 +495,7 @@ function ShareModal({result,quote,char,settings,onClose}){
       <div style={{background:"#0D0A25",border:`1px solid ${C.border}`,
         borderRadius:24,padding:24,width:"100%",maxWidth:360}}>
         <div style={{background:`linear-gradient(135deg,#0A0818,${char.col}18)`,
-          border:`1px solid ${char.col}44`,borderRadius:16,padding:20,
-          marginBottom:16,textAlign:"center"}}>
+          border:`1px solid ${char.col}44`,borderRadius:16,padding:20,marginBottom:16,textAlign:"center"}}>
           <div style={{fontSize:11,color:char.col,fontWeight:800,letterSpacing:2,marginBottom:6}}>
             💸 FRUGAL CALCULATOR
           </div>
@@ -499,15 +537,13 @@ function ShareModal({result,quote,char,settings,onClose}){
 /* ═══════════════════════════════ SETTINGS TAB ═══════════════════════════════ */
 function SettingsTab({settings:s,onChange,onExport,onImport,launchCount,onForcePopup,onResetLaunches}){
   const upd=(k,v)=>onChange(p=>({...p,[k]:v}));
-
-  // Funny life expectancy sub-labels
   const lifeQuip=
-    s.lifeExpectancy<=70?"You okay? That seems low. Talk to someone. 💙"
-    :s.lifeExpectancy<=75?"Bold. Boldly pessimistic. Planning is still smart."
-    :s.lifeExpectancy<=80?"Fair. Statistically reasonable. Carry on."
-    :s.lifeExpectancy<=85?"Optimistic! Good. We like the spirit. 💪"
-    :s.lifeExpectancy<=90?"You feel great and it shows. Respect."
-    :s.lifeExpectancy<=95?"Okay immortal, calm down. But also, good for you."
+    s.lifeExpectancy<=70?"You okay? That seems low. Maybe talk to someone. 💙"
+    :s.lifeExpectancy<=75?"Bold and pessimistic. Planning ahead is still smart."
+    :s.lifeExpectancy<=80?"Statistically reasonable. Very middle-of-the-road of you."
+    :s.lifeExpectancy<=85?"Optimistic! We like the spirit. Compound interest agrees. 💪"
+    :s.lifeExpectancy<=90?"You feel great and it shows. We respect this number."
+    :s.lifeExpectancy<=95?"Okay, immortal, calm down. But also: good for you."
     :"100+? At this point you're just flexing. We respect it. 👑";
 
   return(
@@ -516,20 +552,14 @@ function SettingsTab({settings:s,onChange,onExport,onImport,launchCount,onForceP
         <SL>📊 Your Profile</SL>
         <Slider label="Current Age" value={s.currentAge} min={18}
           max={Math.min(69,s.retirementAge-1)} onChange={v=>upd("currentAge",v)} color={C.cyan}/>
-        <Slider label="Retirement Age" value={s.retirementAge} min={s.currentAge+1}
-          max={Math.min(s.lifeExpectancy-1,80)} onChange={v=>upd("retirementAge",v)} color={C.cyan}/>
-
-        {/* ── Life expectancy: funny label + reactive quip ── */}
-        <Slider
-          label="⚰️ Planned Checkout Age"
-          value={s.lifeExpectancy}
-          min={s.retirementAge+1} max={100}
-          onChange={v=>upd("lifeExpectancy",v)}
-          color="#94A3B8"/>
-        <div style={{fontSize:11,color:C.t3,marginTop:-12,marginBottom:4,lineHeight:1.6,fontStyle:"italic"}}>
-          {lifeQuip}
-        </div>
-        <div style={{...MONO,fontSize:11,color:C.t3,marginTop:8}}>
+        <Slider label="Retirement Age" value={s.retirementAge}
+          min={s.currentAge+1} max={Math.min(s.lifeExpectancy-1,80)}
+          onChange={v=>upd("retirementAge",v)} color={C.cyan}/>
+        <Slider label="⚰️ Planned Checkout Age" value={s.lifeExpectancy}
+          min={s.retirementAge+1} max={100} onChange={v=>upd("lifeExpectancy",v)} color="#94A3B8"/>
+        <div style={{fontSize:11,color:C.t3,marginTop:-12,marginBottom:8,
+          lineHeight:1.6,fontStyle:"italic"}}>{lifeQuip}</div>
+        <div style={{...MONO,fontSize:11,color:C.t3}}>
           📅 {s.retirementAge-s.currentAge} yrs until retirement ·{" "}
           {s.lifeExpectancy-s.retirementAge} yrs in retirement
         </div>
@@ -547,7 +577,7 @@ function SettingsTab({settings:s,onChange,onExport,onImport,launchCount,onForceP
         <Slider label="Monthly Retirement Budget" value={s.monthlyExpense} min={500}
           max={10000} step={100} unit="$" onChange={v=>upd("monthlyExpense",v)} color={C.purple}/>
         <div style={{fontSize:11,color:C.t3,marginTop:-10}}>
-          "Months stolen" = Future Value ÷ this monthly budget
+          Also the threshold between Monthly and Retirement pain scale
         </div>
       </Card>
 
@@ -584,11 +614,11 @@ function SettingsTab({settings:s,onChange,onExport,onImport,launchCount,onForceP
         <SL>💾 Data</SL>
         <div style={{display:"flex",gap:10,marginBottom:10}}>
           <button onClick={onExport} style={{flex:1,padding:10,background:"rgba(16,240,122,.06)",
-            border:`1px solid ${C.green}33`,borderRadius:11,color:C.green,
-            fontWeight:700,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>📤 Export JSON</button>
+            border:`1px solid ${C.green}33`,borderRadius:11,color:C.green,fontWeight:700,
+            cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>📤 Export JSON</button>
           <button onClick={onImport} style={{flex:1,padding:10,background:"rgba(251,146,60,.06)",
-            border:`1px solid ${C.orange}33`,borderRadius:11,color:C.orange,
-            fontWeight:700,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>📥 Import JSON</button>
+            border:`1px solid ${C.orange}33`,borderRadius:11,color:C.orange,fontWeight:700,
+            cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>📥 Import JSON</button>
         </div>
         <div style={{fontSize:11,color:C.t3,textAlign:"center"}}>Settings auto-save to this device</div>
       </Card>
@@ -602,16 +632,18 @@ function SettingsTab({settings:s,onChange,onExport,onImport,launchCount,onForceP
         </div>
       </Card>
 
-      {/* ── Updated math section with corrected pain meter formula ── */}
       <Card>
         <SL>ℹ️ The Math</SL>
-        <div style={{...MONO,fontSize:11,color:C.t3,lineHeight:2.1}}>
-          <div>One-time:       FV = PV × (1+r)ⁿ</div>
-          <div>Recurring:      FV = PMT × ((1+r)ⁿ−1) / r</div>
-          <div>Real return:    (1+nominal) / (1+inflation) − 1</div>
-          <div>Months stolen:  FV ÷ monthly budget</div>
-          <div>Retire months:  (checkout age − retire age) × 12</div>
-          <div>Pain %:         months stolen ÷ retire months</div>
+        <div style={{...MONO,fontSize:11,color:C.t3,lineHeight:2.2}}>
+          <div>One-time:     FV = PV × (1+r)ⁿ</div>
+          <div>Recurring:    FV = PMT × ((1+r)ⁿ−1) / r</div>
+          <div>Real return:  (1+nominal) / (1+inflation) − 1</div>
+          <div>─────────────────────────────────</div>
+          <div>Months stolen = FV ÷ monthly budget</div>
+          <div>Retire months = (checkout − retire age) × 12</div>
+          <div style={{marginTop:4,color:C.t2}}>Pain meter — two scales:</div>
+          <div>· FV &lt; 1 month: % of one paycheck</div>
+          <div>· FV ≥ 1 month: months ÷ retire months</div>
         </div>
       </Card>
 
@@ -648,23 +680,40 @@ function SettingsTab({settings:s,onChange,onExport,onImport,launchCount,onForceP
 }
 
 /* ═══════════════════════════════ CALC TAB ═══════════════════════════════════ */
+// Animated chevron component used in CTA button
+function ChevronArrows({color}){
+  return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",
+      justifyContent:"center",gap:7,flexShrink:0,width:44}}>
+      {[0,1,2].map(i=>(
+        <div key={i} style={{animation:`chevronSlide 1.5s ease-in-out ${i*0.2}s infinite`}}>
+          <div style={{
+            width:16,height:16,
+            borderTop:`2.5px solid ${color}`,
+            borderRight:`2.5px solid ${color}`,
+            transform:"rotate(45deg)",
+            borderRadius:2,
+          }}/>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function CalcTab({dispStr,freq,presetId,showPresets,pendingOp,onPress,onFreq,onPreset,onShowResults,resultPreview}){
-  // Shuffle presets once per mount (i.e. each app launch)
-  const [orderedPresets] = useState(()=>shuffle(PRESETS));
+  const[orderedPresets]=useState(()=>shuffle(PRESETS));
 
   const BTNS=[
-    {l:"AC",t:"AC"}, {l:"+/-",t:"fn"}, {l:"%",t:"fn"}, {l:"÷",t:"op"},
-    {l:"7",t:"d"},   {l:"8",t:"d"},    {l:"9",t:"d"},  {l:"×",t:"op"},
-    {l:"4",t:"d"},   {l:"5",t:"d"},    {l:"6",t:"d"},  {l:"−",t:"op"},
-    {l:"1",t:"d"},   {l:"2",t:"d"},    {l:"3",t:"d"},  {l:"+",t:"op"},
-    {l:"0",t:"z"},   {l:".",t:"d"},    {l:"=",t:"eq"},
-    // "=" has no gridColumn override → flows to col 4 = bottom-right ✓
+    {l:"AC",t:"AC"},{l:"+/-",t:"fn"},{l:"%",t:"fn"},{l:"÷",t:"op"},
+    {l:"7",t:"d"}, {l:"8",t:"d"},   {l:"9",t:"d"},{l:"×",t:"op"},
+    {l:"4",t:"d"}, {l:"5",t:"d"},   {l:"6",t:"d"},{l:"−",t:"op"},
+    {l:"1",t:"d"}, {l:"2",t:"d"},   {l:"3",t:"d"},{l:"+",t:"op"},
+    {l:"0",t:"z"}, {l:".",t:"d"},   {l:"=",t:"eq"},
   ];
   const isActive=l=>pendingOp===(l==="−"?"-":l);
   const bStyle=(t,l)=>{
-    const base={border:"none",cursor:"pointer",borderRadius:13,fontWeight:700,
-      fontFamily:"inherit",display:"flex",alignItems:"center",
-      justifyContent:l==="0"?"flex-start":"center",
+    const base={border:"none",cursor:"pointer",borderRadius:13,fontWeight:700,fontFamily:"inherit",
+      display:"flex",alignItems:"center",justifyContent:l==="0"?"flex-start":"center",
       userSelect:"none",height:56,fontSize:19,transition:"opacity .1s,transform .08s"};
     if(t==="eq") return{...base,background:`linear-gradient(135deg,${C.green},#059669)`,color:"#000",fontSize:22};
     if(t==="z")  return{...base,background:"#1A1830",color:C.t1,gridColumn:"span 2",paddingLeft:24};
@@ -689,13 +738,12 @@ function CalcTab({dispStr,freq,presetId,showPresets,pendingOp,onPress,onFreq,onP
 
   return(
     <div>
-      {/* Quick-tap presets — randomized order each launch */}
       {showPresets&&(
         <div style={{display:"flex",overflowX:"auto",gap:7,padding:"8px 0",scrollbarWidth:"none"}}>
           {orderedPresets.map(p=>(
-            <button key={p.id} onClick={()=>onPreset(p)} style={{flexShrink:0,display:"flex",
-              alignItems:"center",gap:4,padding:"5px 10px",cursor:"pointer",whiteSpace:"nowrap",
-              fontSize:11,border:"none",
+            <button key={p.id} onClick={()=>onPreset(p)} style={{flexShrink:0,
+              display:"flex",alignItems:"center",gap:4,padding:"5px 10px",
+              cursor:"pointer",whiteSpace:"nowrap",fontSize:11,border:"none",
               background:presetId===p.id?"rgba(16,240,122,.12)":"rgba(255,255,255,.05)",
               outline:`1px solid ${presetId===p.id?C.green+"66":C.border}`,
               borderRadius:99,color:presetId===p.id?C.green:C.t2,
@@ -706,7 +754,6 @@ function CalcTab({dispStr,freq,presetId,showPresets,pendingOp,onPress,onFreq,onP
         </div>
       )}
 
-      {/* Frequency selector */}
       <div style={{display:"flex",gap:5,margin:"8px 0"}}>
         {FREQS.map(f=>(
           <button key={f.id} onClick={()=>onFreq(f.id)} style={{flex:1,padding:"7px 2px",
@@ -720,7 +767,6 @@ function CalcTab({dispStr,freq,presetId,showPresets,pendingOp,onPress,onFreq,onP
         ))}
       </div>
 
-      {/* Calculator display */}
       <div style={{background:"rgba(255,255,255,.04)",border:`1px solid ${C.border}`,
         borderRadius:18,padding:"10px 16px 12px",marginBottom:8}}>
         <div style={{fontSize:10,color:C.t3,marginBottom:2}}>
@@ -735,7 +781,6 @@ function CalcTab({dispStr,freq,presetId,showPresets,pendingOp,onPress,onFreq,onP
         </div>
       </div>
 
-      {/* Calc button grid */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7,marginBottom:10}}>
         {BTNS.map((b,i)=>(
           <button key={i} style={bStyle(b.t,b.l)} onClick={()=>handle(b)}
@@ -747,46 +792,36 @@ function CalcTab({dispStr,freq,presetId,showPresets,pendingOp,onPress,onFreq,onP
         ))}
       </div>
 
-      {/* ── CTA button: big dollar, animated chevron arrow ── */}
+      {/* ── CTA button: big dollar + right-side animated chevrons ── */}
       <button onClick={onShowResults} disabled={!resultPreview} style={{
-        width:"100%",
-        padding:resultPreview?"16px":"13px",
+        width:"100%",padding:resultPreview?"16px":"13px",
         background:resultPreview
           ?"linear-gradient(135deg,rgba(16,240,122,.13),rgba(167,139,250,.07))"
           :"rgba(255,255,255,.03)",
         border:`1.5px solid ${resultPreview?C.green+"66":C.border}`,
         borderRadius:16,cursor:resultPreview?"pointer":"default",fontFamily:"inherit",
-        display:"flex",flexDirection:"column",alignItems:"center",gap:4,
-        textAlign:"center",transition:"all .2s",
+        transition:"all .2s",
         boxShadow:resultPreview?`0 0 28px rgba(16,240,122,.08)`:"none",
       }}>
         {resultPreview?(
-          <>
-            <span style={{fontSize:12,color:C.t2,fontWeight:600}}>{ctaTag}</span>
-            <span style={{...MONO,
-              fontSize:resultPreview.nominal>=1e7?30
-                :resultPreview.nominal>=1e6?34
-                :resultPreview.nominal>=1e5?38:42,
-              fontWeight:700,letterSpacing:-2,lineHeight:1.1,color:C.green}}>
-              {usd(resultPreview.nominal)}
-            </span>
-            {/* Animated chevron row */}
-            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
-              <span style={{fontSize:11,color:C.t2}}>in {resultPreview.yrs} yrs</span>
-              <div style={{display:"flex",gap:2,alignItems:"center"}}>
-                {[0,1,2].map(i=>(
-                  <div key={i} style={{
-                    width:7,height:7,borderTop:`2px solid ${C.green}`,
-                    borderRight:`2px solid ${C.green}`,
-                    transform:"rotate(45deg)",
-                    opacity:0.4+(i*0.3),
-                    animation:`chevronPulse 1.2s ease-in-out ${i*0.15}s infinite`,
-                  }}/>
-                ))}
-              </div>
-              <span style={{fontSize:11,color:C.t2}}>tap to witness the carnage</span>
+          // Spacer left | centered content | chevrons right
+          <div style={{display:"flex",alignItems:"center"}}>
+            <div style={{width:44,flexShrink:0}}/>
+            <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+              <span style={{fontSize:12,color:C.t2,fontWeight:600}}>{ctaTag}</span>
+              <span style={{...MONO,
+                fontSize:resultPreview.nominal>=1e7?28
+                  :resultPreview.nominal>=1e6?32
+                  :resultPreview.nominal>=1e5?36:42,
+                fontWeight:700,letterSpacing:-2,lineHeight:1.1,color:C.green}}>
+                {usd(resultPreview.nominal)}
+              </span>
+              <span style={{fontSize:11,color:C.t2,fontWeight:500}}>
+                in {resultPreview.yrs} yrs · tap to witness the carnage
+              </span>
             </div>
-          </>
+            <ChevronArrows color={C.green}/>
+          </div>
         ):(
           <span style={{fontSize:13,color:C.t3}}>Enter an amount to calculate impact</span>
         )}
@@ -803,20 +838,20 @@ export default function App(){
   });
   useEffect(()=>{try{localStorage.setItem("fc_v1",JSON.stringify(settings));}catch{}},[settings]);
 
-  const[tab,        setTab]        = useState("calc");
-  const[display,    setDisplay]    = useState("0");
-  const[stored,     setStored]     = useState(null);
-  const[pendingOp,  setPendingOp]  = useState(null);
-  const[fresh,      setFresh]      = useState(false);
-  const[freq,       setFreq]       = useState("once");
-  const[presetId,   setPresetId]   = useState(null);
-  const[result,     setResult]     = useState(null);
-  const[quote,      setQuote]      = useState("");
-  const[activeChar, setActiveChar] = useState(CHARS[0]);
-  const[showResults,setShowResults]= useState(false);
-  const[showShare,  setShowShare]  = useState(false);
-  const[showPC,     setShowPC]     = useState(false);
-  const[launchCount,setLaunchCount]= useState(0);
+  const[tab,        setTab]        =useState("calc");
+  const[display,    setDisplay]    =useState("0");
+  const[stored,     setStored]     =useState(null);
+  const[pendingOp,  setPendingOp]  =useState(null);
+  const[fresh,      setFresh]      =useState(false);
+  const[freq,       setFreq]       =useState("once");
+  const[presetId,   setPresetId]   =useState(null);
+  const[result,     setResult]     =useState(null);
+  const[quote,      setQuote]      =useState("");
+  const[activeChar, setActiveChar] =useState(CHARS[0]);
+  const[showResults,setShowResults]=useState(false);
+  const[showShare,  setShowShare]  =useState(false);
+  const[showPC,     setShowPC]     =useState(false);
+  const[launchCount,setLaunchCount]=useState(0);
 
   useEffect(()=>{
     injectPWA();
@@ -880,7 +915,7 @@ export default function App(){
     }
   },[display,stored,pendingOp,fresh]);
 
-  const pressRef=useRef(press), freshRef=useRef(fresh);
+  const pressRef=useRef(press),freshRef=useRef(fresh);
   useEffect(()=>{pressRef.current=press;},[press]);
   useEffect(()=>{freshRef.current=fresh;},[fresh]);
   useEffect(()=>{
@@ -896,8 +931,7 @@ export default function App(){
       else if(e.key==="Backspace")setDisplay(d=>d.length>1&&!freshRef.current?d.slice(0,-1):"0");
       else if(e.key==="Escape")pressRef.current("AC","AC");
     };
-    window.addEventListener("keydown",h);
-    return()=>window.removeEventListener("keydown",h);
+    window.addEventListener("keydown",h);return()=>window.removeEventListener("keydown",h);
   },[]);
 
   const exportSettings=()=>{
@@ -932,9 +966,9 @@ export default function App(){
         details>summary{list-style:none}
         details>summary::-webkit-details-marker{display:none}
         @keyframes slideUp{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:translateY(0)}}
-        @keyframes chevronPulse{
-          0%,100%{opacity:.3;transform:rotate(45deg) translateX(0)}
-          50%{opacity:1;transform:rotate(45deg) translateX(3px)}
+        @keyframes chevronSlide{
+          0%,100%{transform:translateX(-4px);opacity:0.15}
+          50%{transform:translateX(6px);opacity:1}
         }
       `}</style>
 
@@ -950,14 +984,12 @@ export default function App(){
 
         <div style={{flex:1,overflowY:"auto",padding:"2px 14px 80px"}}>
           {tab==="calc"
-            ?<CalcTab
-                dispStr={fmtDisp(display)} freq={freq} presetId={presetId}
+            ?<CalcTab dispStr={fmtDisp(display)} freq={freq} presetId={presetId}
                 showPresets={settings.showPresets} pendingOp={pendingOp}
                 onPress={press} onFreq={setFreq} onPreset={selectPreset}
                 onShowResults={()=>{if(result?.nominal>0){reRoast();setShowResults(true);}}}
                 resultPreview={result}/>
-            :<SettingsTab
-                settings={settings} onChange={setSettings}
+            :<SettingsTab settings={settings} onChange={setSettings}
                 onExport={exportSettings} onImport={importSettings}
                 launchCount={launchCount}
                 onForcePopup={()=>setShowPC(true)}
@@ -979,20 +1011,16 @@ export default function App(){
           ))}
         </div>
 
-        {result&&(
-          <ResultsPanel visible={showResults} onClose={()=>setShowResults(false)}
-            result={result} quote={quote} char={activeChar} settings={settings}
-            onShare={()=>setShowShare(true)} onReRoast={reRoast}/>
-        )}
-        {showShare&&result&&(
-          <ShareModal result={result} quote={quote} char={activeChar}
-            settings={settings} onClose={()=>setShowShare(false)}/>
-        )}
-        {showPC&&(
-          <ParamCheckPopup settings={settings} launchCount={launchCount}
-            onConfirm={()=>setShowPC(false)}
-            onSettings={()=>{setShowPC(false);setTab("settings");}}/>
-        )}
+        {result&&<ResultsPanel visible={showResults} onClose={()=>setShowResults(false)}
+          result={result} quote={quote} char={activeChar} settings={settings}
+          onShare={()=>setShowShare(true)} onReRoast={reRoast}/>}
+
+        {showShare&&result&&<ShareModal result={result} quote={quote} char={activeChar}
+          settings={settings} onClose={()=>setShowShare(false)}/>}
+
+        {showPC&&<ParamCheckPopup settings={settings} launchCount={launchCount}
+          onConfirm={()=>setShowPC(false)}
+          onSettings={()=>{setShowPC(false);setTab("settings");}}/>}
       </div>
     </>
   );
