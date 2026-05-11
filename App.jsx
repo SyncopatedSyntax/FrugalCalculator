@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
 /* ══════════════════════════════════════════════════════════════
-   COUNT-UP HOOK
-   Animates from 0 → target whenever `trigger` flips to true,
-   resets to 0 when `trigger` flips to false.
+   COUNT-UP HOOK A — triggered by boolean (results panel)
+   Animates 0 → target whenever `trigger` flips true,
+   resets to 0 when `trigger` flips false.
 ══════════════════════════════════════════════════════════════ */
 function useCountUp(target, duration = 950, trigger = false) {
   const [val, setVal] = useState(0);
@@ -14,7 +14,7 @@ function useCountUp(target, duration = 950, trigger = false) {
     const t0 = performance.now();
     const step = (now) => {
       const p = Math.min((now - t0) / duration, 1);
-      const eased = 1 - (1 - p) ** 3; // ease-out cubic
+      const eased = 1 - (1 - p) ** 3;
       setVal(Math.round(eased * target));
       if (p < 1) rafRef.current = requestAnimationFrame(step);
       else setVal(target);
@@ -26,12 +26,49 @@ function useCountUp(target, duration = 950, trigger = false) {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   COUNT-UP HOOK B — triggered by version counter (CTA button)
+   Animates 0 → target whenever `version` increments.
+   When only `target` changes (typing), shows new value directly
+   without re-animating (avoids jank on every keystroke).
+══════════════════════════════════════════════════════════════ */
+function useCountUpVersioned(target, duration = 850, version = 0) {
+  const [val, setVal] = useState(0);
+  const rafRef    = useRef(null);
+  const animating = useRef(false);
+
+  // Re-animate from 0 only when version increments
+  useEffect(() => {
+    if (!version) { setVal(target); return; }
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    animating.current = true;
+    setVal(0);
+    const t0  = performance.now();
+    const end = target;
+    const step = (now) => {
+      const p     = Math.min((now - t0) / duration, 1);
+      const eased = 1 - (1 - p) ** 3;
+      setVal(Math.round(eased * end));
+      if (p < 1) rafRef.current = requestAnimationFrame(step);
+      else { setVal(end); animating.current = false; }
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [version]); // eslint-disable-line
+
+  // Keep in sync with target when no animation is running (plain typing)
+  useEffect(() => {
+    if (!animating.current) setVal(target);
+  }, [target]);
+
+  return val;
+}
+
+/* ══════════════════════════════════════════════════════════════
    CANVAS HELPERS
 ══════════════════════════════════════════════════════════════ */
 function rrect(ctx, x, y, w, h, r) {
   ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
+  ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y);
   ctx.quadraticCurveTo(x + w, y, x + w, y + r);
   ctx.lineTo(x + w, y + h - r);
   ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
@@ -54,131 +91,86 @@ function wrapText(ctx, text, x, y, maxW, lh) {
   ctx.fillText(line.trim(), x, y + count * lh);
   return count + 1;
 }
-
 function generateShareImage({ nominal, real, months, yrs, amount, freq, presetObj, char, quote, settings }) {
   const W = 1080, H = 1080, pad = 80;
   const cvs = document.createElement("canvas");
   cvs.width = W; cvs.height = H;
   const ctx = cvs.getContext("2d");
-
-  // ── Background ────────────────────────────────────────
   const bg = ctx.createLinearGradient(0, 0, W, H);
   bg.addColorStop(0, "#07071A"); bg.addColorStop(1, "#0F0822");
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
-
-  // Subtle dot grid
   ctx.fillStyle = "rgba(255,255,255,0.025)";
   for (let gx = 72; gx < W; gx += 72)
     for (let gy = 72; gy < H; gy += 72) {
       ctx.beginPath(); ctx.arc(gx, gy, 1.5, 0, Math.PI * 2); ctx.fill();
     }
-
-  // ── Accent bars top & bottom ──────────────────────────
-  const accentGrad = ctx.createLinearGradient(0, 0, W, 0);
-  accentGrad.addColorStop(0, char.col);
-  accentGrad.addColorStop(0.5, "#10F07A");
-  accentGrad.addColorStop(1, char.col);
-  ctx.fillStyle = accentGrad;
-  ctx.fillRect(0, 0, W, 9);
-  ctx.fillRect(0, H - 9, W, 9);
-
-  // ── App name ─────────────────────────────────────────
-  ctx.fillStyle = "#10F07A";
-  ctx.font = "bold 40px Arial, Helvetica, sans-serif";
+  const aG = ctx.createLinearGradient(0, 0, W, 0);
+  aG.addColorStop(0, char.col); aG.addColorStop(.5, "#10F07A"); aG.addColorStop(1, char.col);
+  ctx.fillStyle = aG; ctx.fillRect(0, 0, W, 9); ctx.fillRect(0, H - 9, W, 9);
+  ctx.fillStyle = "#10F07A"; ctx.font = "bold 40px Arial,Helvetica,sans-serif";
   ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
   ctx.fillText("FRUGAL CALCULATOR", pad, 80);
-
-  // Separator
-  ctx.strokeStyle = "rgba(255,255,255,0.07)"; ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(255,255,255,.07)"; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(pad, 100); ctx.lineTo(W - pad, 100); ctx.stroke();
-
-  // ── Spend description ────────────────────────────────
-  const fLabel = { once:"one-time", daily:"daily", weekly:"weekly", monthly:"monthly", annually:"yearly" }[freq] || freq;
-  const iLabel = presetObj ? presetObj.label
-    : new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2}).format(amount) + " spend";
-  ctx.fillStyle = "#94A3B8"; ctx.font = "34px Arial, Helvetica, sans-serif"; ctx.textAlign = "center";
-  ctx.fillText(`Your ${fLabel} ${iLabel}`, W / 2, 148);
-  ctx.fillStyle = "#64748B"; ctx.font = "28px Arial, Helvetica, sans-serif";
+  const fL = { once:"one-time", daily:"daily", weekly:"weekly", monthly:"monthly", annually:"yearly" }[freq] || freq;
+  const iL = presetObj ? presetObj.label : new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2}).format(amount) + " spend";
+  ctx.fillStyle = "#94A3B8"; ctx.font = "34px Arial,Helvetica,sans-serif"; ctx.textAlign = "center";
+  ctx.fillText(`Your ${fL} ${iL}`, W / 2, 148);
+  ctx.fillStyle = "#64748B"; ctx.font = "28px Arial,Helvetica,sans-serif";
   ctx.fillText("compounded over time becomes...", W / 2, 185);
-
-  // ── Big FV number ─────────────────────────────────────
-  const nomStr = new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(nominal);
-  const fsize = nomStr.length > 13 ? 82 : nomStr.length > 11 ? 96 : nomStr.length > 9 ? 108 : 118;
-  ctx.fillStyle = "#10F07A";
-  ctx.font = `bold ${fsize}px 'Courier New', Courier, monospace`;
-  ctx.textAlign = "center";
-  ctx.fillText(nomStr, W / 2, 320);
-
-  ctx.fillStyle = "#475569"; ctx.font = "26px Arial, Helvetica, sans-serif";
+  const nS = new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(nominal);
+  const fs = nS.length > 13 ? 82 : nS.length > 11 ? 96 : nS.length > 9 ? 108 : 118;
+  ctx.fillStyle = "#10F07A"; ctx.font = `bold ${fs}px 'Courier New',Courier,monospace`; ctx.textAlign = "center";
+  ctx.fillText(nS, W / 2, 320);
+  ctx.fillStyle = "#475569"; ctx.font = "26px Arial,Helvetica,sans-serif";
   ctx.fillText(`at retirement in ${yrs} years  ·  ${settings.growthRate}% annual return`, W / 2, 366);
-  ctx.fillStyle = "#374151"; ctx.font = "22px Arial, Helvetica, sans-serif";
-  const realStr = new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(real);
-  ctx.fillText(`in today's dollars: ${realStr}`, W / 2, 396);
-
-  // ── Pain pill ─────────────────────────────────────────
+  ctx.fillStyle = "#374151"; ctx.font = "22px Arial,Helvetica,sans-serif";
+  ctx.fillText(`in today's dollars: ${new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(real)}`, W / 2, 396);
   const isSubM = nominal < settings.monthlyExpense;
-  const pillTxt = isSubM
+  const pTxt = isSubM
     ? `${Math.round((nominal / settings.monthlyExpense) * 100)}% of one retirement paycheck`
     : `${Math.round(nominal / settings.monthlyExpense)} months of retirement STOLEN`;
   const pY = 420, pH = 86;
-  ctx.fillStyle = "rgba(251,146,60,0.12)";
+  ctx.fillStyle = "rgba(251,146,60,.12)";
   rrect(ctx, pad, pY, W - 2 * pad, pH, 22); ctx.fill();
-  ctx.strokeStyle = "rgba(251,146,60,0.38)"; ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(251,146,60,.38)"; ctx.lineWidth = 2;
   rrect(ctx, pad, pY, W - 2 * pad, pH, 22); ctx.stroke();
-  ctx.fillStyle = "#FB923C"; ctx.font = "bold 40px Arial, Helvetica, sans-serif"; ctx.textAlign = "center";
-  ctx.fillText(pillTxt, W / 2, pY + 55);
-
-  // ── Two stat boxes ────────────────────────────────────
+  ctx.fillStyle = "#FB923C"; ctx.font = "bold 40px Arial,Helvetica,sans-serif"; ctx.textAlign = "center";
+  ctx.fillText(pTxt, W / 2, pY + 55);
   const multi = amount > 0 ? Math.round(nominal / amount) : 0;
   const hw = (W - 2 * pad - 18) / 2, sY = 526, sH = 76;
-  // Growth
-  ctx.fillStyle = "rgba(16,240,122,0.09)";
-  rrect(ctx, pad, sY, hw, sH, 18); ctx.fill();
-  ctx.strokeStyle = "rgba(16,240,122,0.22)"; ctx.lineWidth = 1.5;
-  rrect(ctx, pad, sY, hw, sH, 18); ctx.stroke();
-  ctx.fillStyle = "#10F07A"; ctx.font = "bold 34px Arial, Helvetica, sans-serif"; ctx.textAlign = "center";
+  ctx.fillStyle = "rgba(16,240,122,.09)"; rrect(ctx, pad, sY, hw, sH, 18); ctx.fill();
+  ctx.strokeStyle = "rgba(16,240,122,.22)"; ctx.lineWidth = 1.5; rrect(ctx, pad, sY, hw, sH, 18); ctx.stroke();
+  ctx.fillStyle = "#10F07A"; ctx.font = "bold 34px Arial,Helvetica,sans-serif"; ctx.textAlign = "center";
   ctx.fillText(`${multi}\u00d7 your money`, pad + hw / 2, sY + 48);
-  // Years
-  ctx.fillStyle = "rgba(167,139,250,0.09)";
-  rrect(ctx, pad + hw + 18, sY, hw, sH, 18); ctx.fill();
-  ctx.strokeStyle = "rgba(167,139,250,0.22)"; ctx.lineWidth = 1.5;
-  rrect(ctx, pad + hw + 18, sY, hw, sH, 18); ctx.stroke();
-  ctx.fillStyle = "#A78BFA"; ctx.font = "bold 34px Arial, Helvetica, sans-serif";
-  ctx.fillText(`${yrs} years of growth`, pad + hw + 18 + hw / 2, sY + 48);
-
-  // ── Quote ─────────────────────────────────────────────
+  ctx.fillStyle = "rgba(167,139,250,.09)"; rrect(ctx, pad + hw + 18, sY, hw, sH, 18); ctx.fill();
+  ctx.strokeStyle = "rgba(167,139,250,.22)"; ctx.lineWidth = 1.5; rrect(ctx, pad + hw + 18, sY, hw, sH, 18); ctx.stroke();
+  ctx.fillStyle = "#A78BFA"; ctx.fillText(`${yrs} years of growth`, pad + hw + 18 + hw / 2, sY + 48);
   const maxQ = 185;
   const qTxt = `"${quote.length > maxQ ? quote.substring(0, maxQ) + "..." : quote}"`;
-  ctx.fillStyle = "#CBD5E1"; ctx.font = "italic 30px Arial, Helvetica, sans-serif"; ctx.textAlign = "center";
+  ctx.fillStyle = "#CBD5E1"; ctx.font = "italic 30px Arial,Helvetica,sans-serif"; ctx.textAlign = "center";
   const qY = 648, qLH = 44;
-  const nLines = wrapText(ctx, qTxt, W / 2, qY, W - 2 * pad - 20, qLH);
-  ctx.fillStyle = char.col; ctx.font = `bold 27px Arial, Helvetica, sans-serif`;
-  ctx.fillText(`\u2014 ${char.name}`, W / 2, qY + nLines * qLH + 14);
-
-  // ── Pain bar ──────────────────────────────────────────
+  const nL = wrapText(ctx, qTxt, W / 2, qY, W - 2 * pad - 20, qLH);
+  ctx.fillStyle = char.col; ctx.font = `bold 27px Arial,Helvetica,sans-serif`;
+  ctx.fillText(`\u2014 ${char.name}`, W / 2, qY + nL * qLH + 14);
   const retM = Math.max(1, (settings.lifeExpectancy - settings.retirementAge) * 12);
-  const pct = isSubM
+  const pct  = isSubM
     ? Math.min(99, (nominal / settings.monthlyExpense) * 100)
     : Math.min(100, (nominal / settings.monthlyExpense / retM) * 100);
   const bY = 890, bH = 13;
-  ctx.fillStyle = "#475569"; ctx.font = "20px Arial, Helvetica, sans-serif"; ctx.textAlign = "left";
+  ctx.fillStyle = "#475569"; ctx.font = "20px Arial,Helvetica,sans-serif"; ctx.textAlign = "left";
   ctx.fillText("Retirement Pain Meter", pad, bY - 11);
   ctx.textAlign = "right";
   ctx.fillStyle = pct > 60 ? "#DC2626" : pct > 30 ? "#F97316" : pct > 10 ? "#EAB308" : "#22D469";
   ctx.fillText(`${Math.round(pct)}%`, W - pad, bY - 11);
-  ctx.fillStyle = "rgba(255,255,255,0.12)";
-  rrect(ctx, pad, bY, W - 2 * pad, bH, 7); ctx.fill();
-  const bFill = Math.max(13, (W - 2 * pad) * pct / 100);
-  const barG = ctx.createLinearGradient(pad, 0, pad + bFill, 0);
-  barG.addColorStop(0, "#10F07A");
-  barG.addColorStop(1, pct > 60 ? "#7F1D1D" : pct > 30 ? "#EF4444" : pct > 10 ? "#F97316" : "#22D469");
-  ctx.fillStyle = barG;
-  rrect(ctx, pad, bY, bFill, bH, 7); ctx.fill();
-
-  // ── Watermark ─────────────────────────────────────────
-  ctx.fillStyle = "#1E293B"; ctx.font = "20px Arial, Helvetica, sans-serif"; ctx.textAlign = "center";
+  ctx.fillStyle = "rgba(255,255,255,.12)"; rrect(ctx, pad, bY, W - 2 * pad, bH, 7); ctx.fill();
+  const bF = Math.max(13, (W - 2 * pad) * pct / 100);
+  const bG = ctx.createLinearGradient(pad, 0, pad + bF, 0);
+  bG.addColorStop(0, "#10F07A");
+  bG.addColorStop(1, pct > 60 ? "#7F1D1D" : pct > 30 ? "#EF4444" : pct > 10 ? "#F97316" : "#22D469");
+  ctx.fillStyle = bG; rrect(ctx, pad, bY, bF, bH, 7); ctx.fill();
+  ctx.fillStyle = "#1E293B"; ctx.font = "20px Arial,Helvetica,sans-serif"; ctx.textAlign = "center";
   ctx.fillText("frugalcalculator.app  \u00b7  Your future self says: stop spending.", W / 2, 960);
-
   return cvs.toDataURL("image/png");
 }
 
@@ -204,17 +196,16 @@ function decodeUrl() {
     const amount = parseFloat(p.get("a"));
     if (!amount || !isFinite(amount) || amount <= 0) return null;
     const s = {};
-    ({ ca:"currentAge", ra:"retirementAge", le:"lifeExpectancy", me:"monthlyExpense" });
-    for (const [k,v] of Object.entries({ ca:"currentAge", ra:"retirementAge", le:"lifeExpectancy", me:"monthlyExpense" }))
+    for (const [k, v] of Object.entries({ ca:"currentAge", ra:"retirementAge", le:"lifeExpectancy", me:"monthlyExpense" }))
       if (p.has(k)) s[v] = parseInt(p.get(k));
-    for (const [k,v] of Object.entries({ gr:"growthRate", ir:"inflationRate" }))
+    for (const [k, v] of Object.entries({ gr:"growthRate", ir:"inflationRate" }))
       if (p.has(k)) s[v] = parseFloat(p.get(k));
     return { amount, freq: p.get("f") || "once", settings: s };
   } catch { return null; }
 }
 
 /* ══════════════════════════════════════════════════════════════
-   CORE UTILS
+   CORE MATH UTILS
 ══════════════════════════════════════════════════════════════ */
 const doCalc = (a,b,op) => ({"+":a+b,"-":a-b,"×":a*b,"÷":b?a/b:0}[op]??b);
 function calcFV({amount,freq,currentAge,retirementAge,growthRate,inflationRate}){
@@ -283,7 +274,7 @@ function shuffle(arr){
 }
 
 /* ══════════════════════════════════════════════════════════════
-   COLORS & DATA
+   COLORS & MONO
 ══════════════════════════════════════════════════════════════ */
 const C={
   green:"#10F07A",purple:"#A78BFA",orange:"#FB923C",
@@ -293,6 +284,9 @@ const C={
 };
 const MONO={fontFamily:"'SF Mono','Fira Code',Consolas,monospace"};
 
+/* ══════════════════════════════════════════════════════════════
+   DATA
+══════════════════════════════════════════════════════════════ */
 const CHARS=[
   {id:"grumpy",name:"Future You",av:"👴",tag:"Back in MY day, we SAVED.",col:"#FF6B35",bg:"rgba(255,107,53,.13)",
    q({amount,fv,months,label,freq}){
@@ -382,7 +376,7 @@ const DEF={
 };
 
 /* ══════════════════════════════════════════════════════════════
-   PWA
+   PWA ICON
 ══════════════════════════════════════════════════════════════ */
 function injectPWA(){
   try{
@@ -391,8 +385,8 @@ function injectPWA(){
         <stop offset="0%" stop-color="#1E0A3C"/><stop offset="100%" stop-color="#07071A"/>
       </linearGradient></defs>
       <rect width="192" height="192" rx="42" fill="url(#g)"/>
-      <text x="96" y="116" text-anchor="middle"
-        font-family="-apple-system,Helvetica,sans-serif" font-size="98" font-weight="900" fill="#10F07A">$</text>
+      <text x="96" y="116" text-anchor="middle" font-family="-apple-system,Helvetica,sans-serif"
+        font-size="98" font-weight="900" fill="#10F07A">$</text>
       <line x1="38" y1="84" x2="154" y2="84" stroke="#FB923C" stroke-width="11" stroke-linecap="round"/>
       <text x="96" y="170" text-anchor="middle" font-family="-apple-system,Helvetica,sans-serif"
         font-size="12" font-weight="700" fill="#10F07A" letter-spacing="3" opacity="0.55">FRUGAL</text>
@@ -412,7 +406,7 @@ function injectPWA(){
 }
 
 /* ══════════════════════════════════════════════════════════════
-   SHARED UI COMPONENTS
+   SHARED UI
 ══════════════════════════════════════════════════════════════ */
 function Slider({label,value,min,max,step=1,unit="",onChange,color=C.green}){
   const[editing,setEditing]=useState(false);
@@ -467,6 +461,31 @@ function Toggle({value,onChange,label}){
 }
 
 /* ══════════════════════════════════════════════════════════════
+   HORIZONTAL SIDE-BY-SIDE CHEVRONS  ›  ›  ›
+   Bigger, staggered slide animation, laid out in a row.
+══════════════════════════════════════════════════════════════ */
+function Chevrons({ color = C.green }) {
+  return (
+    <div style={{
+      display:"flex", flexDirection:"row", alignItems:"center",
+      justifyContent:"center", gap:5, flexShrink:0, paddingLeft:4,
+    }}>
+      {[0,1,2].map(i => (
+        <div key={i} style={{ animation:`chevSlide 1.5s ease-in-out ${i * 0.18}s infinite` }}>
+          <div style={{
+            width: 18, height: 18,
+            borderTop:   `3px solid ${color}`,
+            borderRight: `3px solid ${color}`,
+            transform: "rotate(45deg)",
+            borderRadius: 3,
+          }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
    PARAM CHECK POPUP
 ══════════════════════════════════════════════════════════════ */
 const PARAM_MSGS=[
@@ -506,9 +525,8 @@ function ParamCheckPopup({settings,launchCount,onConfirm,onSettings}){
             border:`1px solid ${C.border}`,borderRadius:12,color:C.t2,fontWeight:700,
             cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>⚙️ Fix it</button>
           <button onClick={onConfirm} style={{flex:2,padding:12,background:C.green,border:"none",
-            borderRadius:12,color:"#000",fontWeight:900,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>
-            ✅ Looks right!
-          </button>
+            borderRadius:12,color:"#000",fontWeight:900,cursor:"pointer",fontSize:13,
+            fontFamily:"inherit"}}>✅ Looks right!</button>
         </div>
       </div>
     </div>
@@ -516,18 +534,13 @@ function ParamCheckPopup({settings,launchCount,onConfirm,onSettings}){
 }
 
 /* ══════════════════════════════════════════════════════════════
-   RESULTS PANEL  (slides in from right, count-up on FV number)
+   RESULTS PANEL  (slides from right, count-up on FV)
 ══════════════════════════════════════════════════════════════ */
 function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRoast}){
   if(!result||result.nominal<=0)return null;
   const{nominal,real,months,yrs,amount}=result;
   const multi=amount>0?Math.round(nominal/amount):0;
-
-  // ── Count-up: animates when panel becomes visible ──────
   const animNominal=useCountUp(nominal,950,visible);
-  const displayNominal=usd(animNominal);
-
-  // ── Two-mode pain meter ───────────────────────────────
   const retirementMonths=Math.max(1,(settings.lifeExpectancy-settings.retirementAge)*12);
   const isSubMonthly=nominal<settings.monthlyExpense;
   let painPct,painSeverity,painScaleLabel,painDetailLabel;
@@ -544,14 +557,12 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
   }
   const{col:painCol,lbl:painLbl}=painSeverity;
   const cant=cannotAfford(nominal);
-
   return(
     <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,
       background:`linear-gradient(160deg,${C.bg} 0%,#100A2A 100%)`,
       transform:`translateX(${visible?"0":"100%"})`,
       transition:"transform 0.32s cubic-bezier(0.25,0.46,0.45,0.94)",
       zIndex:150,overflowY:"auto",overflowX:"hidden",maxWidth:430,margin:"0 auto"}}>
-
       <div style={{position:"sticky",top:0,background:"rgba(7,7,26,.96)",backdropFilter:"blur(20px)",
         padding:"12px 16px",borderBottom:`1px solid ${C.border}`,
         display:"flex",alignItems:"center",gap:12,zIndex:1}}>
@@ -564,9 +575,7 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
           <div style={{fontSize:11,color:C.t3}}>Your future self is not doing okay</div>
         </div>
       </div>
-
       <div style={{padding:"0 16px 100px"}}>
-        {/* Quote bubble */}
         <div style={{margin:"14px 0",background:char.bg,border:`1px solid ${char.col}44`,borderRadius:20,padding:16}}>
           <div style={{display:"flex",gap:12,alignItems:"flex-start",marginBottom:12}}>
             <span style={{fontSize:34,flexShrink:0,lineHeight:1}}>{char.av}</span>
@@ -575,26 +584,17 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
               <div style={{fontSize:13,color:"#E2E8F0",lineHeight:1.6,fontStyle:"italic"}}>"{quote}"</div>
             </div>
           </div>
-          <button onClick={onReRoast} style={{padding:"5px 12px",fontSize:11,
-            background:"rgba(255,255,255,.07)",border:"none",borderRadius:10,
-            color:C.t2,cursor:"pointer",fontFamily:"inherit"}}>🎲 Roast me again</button>
+          <button onClick={onReRoast} style={{padding:"5px 12px",fontSize:11,background:"rgba(255,255,255,.07)",
+            border:"none",borderRadius:10,color:C.t2,cursor:"pointer",fontFamily:"inherit"}}>🎲 Roast me again</button>
         </div>
-
-        {/* Animated FV number */}
         <div style={{textAlign:"center",padding:"18px 0 14px"}}>
-          <div style={{fontSize:12,color:C.t2,marginBottom:5}}>
-            Future value in {yrs} yrs · {settings.growthRate}% return
-          </div>
-          <div style={{...MONO,
-            fontSize:nominal>9999999?30:nominal>999999?36:48,
-            fontWeight:700,color:C.green,letterSpacing:-2,lineHeight:1,
-            transition:"font-size .2s"}}>
-            {displayNominal}
+          <div style={{fontSize:12,color:C.t2,marginBottom:5}}>Future value in {yrs} yrs · {settings.growthRate}% return</div>
+          <div style={{...MONO,fontSize:nominal>9999999?30:nominal>999999?36:48,
+            fontWeight:700,color:C.green,letterSpacing:-2,lineHeight:1}}>
+            {usd(animNominal)}
           </div>
           <div style={{fontSize:12,color:C.t3,marginTop:6}}>Today's dollars: {usd(real)}</div>
         </div>
-
-        {/* Stats */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
           {isSubMonthly?(
             <div style={{background:"rgba(251,146,60,.09)",border:"1px solid rgba(251,146,60,.22)",borderRadius:14,padding:12,textAlign:"center"}}>
@@ -618,20 +618,14 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
             <div style={{fontSize:11,color:C.t2}}>if invested now</div>
           </div>
         </div>
-
-        {/* What you could've had */}
         <div style={{background:"rgba(252,211,77,.07)",border:"1px solid rgba(252,211,77,.18)",borderRadius:16,padding:14,marginBottom:12}}>
           <div style={{fontSize:10,color:C.gold,fontWeight:700,marginBottom:5}}>💎 WHAT YOU COULD'VE HAD</div>
           <div style={{fontSize:15,color:"#FEF3C7",fontWeight:700}}>👉 {cant.charAt(0).toUpperCase()+cant.slice(1)}</div>
           <div style={{fontSize:11,color:"#92400E",marginTop:4}}>worth {usd(nominal)} at retirement</div>
         </div>
-
-        {/* Two-mode pain meter */}
         <div style={{marginBottom:16}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:11,marginBottom:7}}>
-            <span style={{color:C.t2}}>
-              💀 Pain Meter <span style={{fontSize:9,color:C.t3}}>· {painScaleLabel}</span>
-            </span>
+            <span style={{color:C.t2}}>💀 Pain Meter <span style={{fontSize:9,color:C.t3}}>· {painScaleLabel}</span></span>
             <span style={{color:painCol,fontWeight:700,fontSize:10}}>{painLbl}</span>
           </div>
           <div style={{background:"rgba(255,255,255,.12)",borderRadius:99,height:10,overflow:"hidden"}}>
@@ -641,11 +635,9 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
           </div>
           <div style={{fontSize:11,color:C.t3,marginTop:5}}>{painDetailLabel}</div>
         </div>
-
-        <button onClick={onShare} style={{width:"100%",padding:14,
-          background:"rgba(16,240,122,.08)",border:`1px solid ${C.green}44`,
-          borderRadius:14,color:C.green,fontWeight:800,cursor:"pointer",
-          fontSize:15,letterSpacing:.5,fontFamily:"inherit"}}>
+        <button onClick={onShare} style={{width:"100%",padding:14,background:"rgba(16,240,122,.08)",
+          border:`1px solid ${C.green}44`,borderRadius:14,color:C.green,fontWeight:800,
+          cursor:"pointer",fontSize:15,letterSpacing:.5,fontFamily:"inherit"}}>
           📤 Share the Pain
         </button>
       </div>
@@ -654,7 +646,7 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
 }
 
 /* ══════════════════════════════════════════════════════════════
-   SHARE MODAL  (text copy + URL copy + canvas image download)
+   SHARE MODAL
 ══════════════════════════════════════════════════════════════ */
 function ShareModal({result,quote,char,settings,onClose}){
   const{nominal,months,yrs,amount,freq,presetObj}=result;
@@ -663,114 +655,83 @@ function ShareModal({result,quote,char,settings,onClose}){
   const[copied,setCopied]=useState(false);
   const[urlCopied,setUrlCopied]=useState(false);
   const[imgBusy,setImgBusy]=useState(false);
-
-  const shareText=[
-    "💸 Frugal Calculator","",
-    `My ${freqLbl} ${item} = ${usd(nominal)} at retirement.`,
+  const shareText=["💸 Frugal Calculator","",`My ${freqLbl} ${item} = ${usd(nominal)} at retirement.`,
     `That's ${months} months of retirement income GONE! 😱`,"",
-    `${char.av} "${quote.substring(0,100)}..."`,""," 📲 frugalcalculator.app",
-  ].join("\n");
-
+    `${char.av} "${quote.substring(0,100)}..."`,""," 📲 frugalcalculator.app",].join("\n");
   const shareUrl=encodeUrl(result,settings);
-
-  const copyText=()=>navigator.clipboard.writeText(shareText)
-    .then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);});
-  const copyUrl=()=>navigator.clipboard.writeText(shareUrl)
-    .then(()=>{setUrlCopied(true);setTimeout(()=>setUrlCopied(false),2500);});
-
+  const copyText=()=>navigator.clipboard.writeText(shareText).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);});
+  const copyUrl=()=>navigator.clipboard.writeText(shareUrl).then(()=>{setUrlCopied(true);setTimeout(()=>setUrlCopied(false),2500);});
   const downloadImage=()=>{
     setImgBusy(true);
-    try{
-      const dataUrl=generateShareImage({nominal,real:0,months,yrs,amount,freq,presetObj,char,quote,settings});
-      const a=document.createElement("a");
-      a.href=dataUrl;a.download="frugal-calculator-shame.png";a.click();
+    try{const d=generateShareImage({nominal,real:0,months,yrs,amount,freq,presetObj,char,quote,settings});
+      Object.assign(document.createElement("a"),{href:d,download:"frugal-shame.png"}).click();
     }catch(e){alert("Couldn't generate image: "+e.message);}
     finally{setImgBusy(false);}
   };
-
   const shareImage=async()=>{
     setImgBusy(true);
-    try{
-      const dataUrl=generateShareImage({nominal,real:0,months,yrs,amount,freq,presetObj,char,quote,settings});
-      const res=await fetch(dataUrl);
-      const blob=await res.blob();
+    try{const d=generateShareImage({nominal,real:0,months,yrs,amount,freq,presetObj,char,quote,settings});
+      const res=await fetch(d);const blob=await res.blob();
       const file=new File([blob],"frugal-calculator.png",{type:"image/png"});
-      if(navigator.canShare?.({files:[file]})){
-        await navigator.share({files:[file],title:"Frugal Calculator"});
-      }else downloadImage();
+      if(navigator.canShare?.({files:[file]}))await navigator.share({files:[file],title:"Frugal Calculator"});
+      else downloadImage();
     }catch(e){if(e.name!=="AbortError")downloadImage();}
     finally{setImgBusy(false);}
   };
-
   return(
     <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:"fixed",inset:0,
       background:"rgba(0,0,0,.92)",display:"flex",alignItems:"center",justifyContent:"center",
       padding:20,zIndex:200,backdropFilter:"blur(14px)"}}>
       <div style={{background:"#0D0A25",border:`1px solid ${C.border}`,borderRadius:24,
         padding:24,width:"100%",maxWidth:360,maxHeight:"90vh",overflowY:"auto"}}>
-
-        {/* Preview card */}
         <div style={{background:`linear-gradient(135deg,#0A0818,${char.col}18)`,
           border:`1px solid ${char.col}44`,borderRadius:16,padding:20,marginBottom:16,textAlign:"center"}}>
           <div style={{fontSize:11,color:char.col,fontWeight:800,letterSpacing:2,marginBottom:6}}>💸 FRUGAL CALCULATOR</div>
           <div style={{fontSize:12,color:C.t3,marginBottom:8}}>{freqLbl} {item}</div>
           <div style={{...MONO,fontSize:36,fontWeight:700,color:C.green,letterSpacing:-1}}>{usd(nominal)}</div>
           <div style={{fontSize:11,color:C.t3,marginBottom:10}}>at retirement · {yrs} years</div>
-          <div style={{padding:"8px 14px",background:"rgba(251,146,60,.12)",
-            border:"1px solid rgba(251,146,60,.3)",borderRadius:10,display:"inline-flex",alignItems:"center",gap:8}}>
+          <div style={{padding:"8px 14px",background:"rgba(251,146,60,.12)",border:"1px solid rgba(251,146,60,.3)",
+            borderRadius:10,display:"inline-flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:16}}>⏳</span>
             <span style={{fontSize:13,color:C.orange,fontWeight:800}}>{months} months stolen</span>
           </div>
           <div style={{marginTop:10,fontSize:10,color:C.t4,fontStyle:"italic"}}>
-            {char.av} "{quote.substring(0,80)}..."
-          </div>
+            {char.av} "{quote.substring(0,80)}..."</div>
         </div>
-
-        {/* Share text */}
         <button onClick={copyText} style={{width:"100%",padding:13,marginBottom:8,fontFamily:"inherit",
           background:copied?"rgba(16,240,122,.2)":"rgba(16,240,122,.08)",
           border:`1px solid ${copied?C.green:C.green+"44"}`,borderRadius:14,
           color:C.green,fontWeight:700,cursor:"pointer",fontSize:14,transition:"all .2s"}}>
           {copied?"✅ Copied!":"📋 Copy Share Text"}
         </button>
-
-        {/* Share image */}
         <button onClick={shareImage} disabled={imgBusy} style={{width:"100%",padding:13,marginBottom:8,
-          fontFamily:"inherit",background:"rgba(167,139,250,.08)",
-          border:`1px solid ${C.purple}44`,borderRadius:14,color:C.purple,
-          fontWeight:700,cursor:imgBusy?"wait":"pointer",fontSize:14,transition:"all .2s",
-          opacity:imgBusy?0.6:1}}>
+          fontFamily:"inherit",background:"rgba(167,139,250,.08)",border:`1px solid ${C.purple}44`,
+          borderRadius:14,color:C.purple,fontWeight:700,cursor:imgBusy?"wait":"pointer",
+          fontSize:14,transition:"all .2s",opacity:imgBusy?0.6:1}}>
           {imgBusy?"⏳ Generating...":"🖼️ Share as Image"}
         </button>
-
-        {/* URL sharing */}
-        <div style={{background:"rgba(255,255,255,.03)",border:`1px solid ${C.border}`,
-          borderRadius:14,padding:14,marginBottom:8}}>
+        <div style={{background:"rgba(255,255,255,.03)",border:`1px solid ${C.border}`,borderRadius:14,padding:14,marginBottom:8}}>
           <div style={{fontSize:11,color:C.t3,marginBottom:8,fontWeight:600}}>🔗 Shareable Link</div>
-          <div style={{...MONO,fontSize:10,color:C.t4,wordBreak:"break-all",
-            lineHeight:1.6,marginBottom:10,padding:"6px 8px",background:"rgba(0,0,0,.2)",
-            borderRadius:8}}>
+          <div style={{...MONO,fontSize:10,color:C.t4,wordBreak:"break-all",lineHeight:1.6,marginBottom:10,
+            padding:"6px 8px",background:"rgba(0,0,0,.2)",borderRadius:8}}>
             {shareUrl.length>80?shareUrl.substring(0,80)+"...":shareUrl}
           </div>
           <button onClick={copyUrl} style={{width:"100%",padding:10,fontFamily:"inherit",
             background:urlCopied?"rgba(34,211,238,.2)":"rgba(34,211,238,.08)",
             border:`1px solid ${urlCopied?C.cyan:C.cyan+"44"}`,borderRadius:10,
             color:C.cyan,fontWeight:700,cursor:"pointer",fontSize:13,transition:"all .2s"}}>
-            {urlCopied?"✅ Link Copied!":"📎 Copy Link — opens pre-filled for anyone"}
+            {urlCopied?"✅ Link Copied!":"📎 Copy Link"}
           </button>
         </div>
-
-        {/* Native share */}
         {typeof navigator!=="undefined"&&navigator.share&&(
           <button onClick={()=>navigator.share({title:"Frugal Calculator",text:shareText,url:shareUrl}).catch(()=>{})}
             style={{width:"100%",padding:13,marginBottom:8,background:"rgba(255,255,255,.04)",
               border:`1px solid ${C.border}`,borderRadius:14,color:C.t1,
               fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>📤 Share via…</button>
         )}
-
         <button onClick={onClose} style={{width:"100%",padding:11,background:"none",
-          border:`1px solid ${C.border}`,borderRadius:14,color:C.t3,
-          cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>Close</button>
+          border:`1px solid ${C.border}`,borderRadius:14,color:C.t3,cursor:"pointer",
+          fontSize:13,fontFamily:"inherit"}}>Close</button>
       </div>
     </div>
   );
@@ -797,9 +758,7 @@ function SettingsTab({settings:s,onChange,onExport,onImport,launchCount,onForceP
         <Slider label="Retirement Age" value={s.retirementAge} min={s.currentAge+1} max={Math.min(s.lifeExpectancy-1,80)} onChange={v=>upd("retirementAge",v)} color={C.cyan}/>
         <Slider label="⚰️ Planned Checkout Age" value={s.lifeExpectancy} min={s.retirementAge+1} max={100} onChange={v=>upd("lifeExpectancy",v)} color="#94A3B8"/>
         <div style={{fontSize:11,color:C.t3,marginTop:-12,marginBottom:8,lineHeight:1.6,fontStyle:"italic"}}>{lifeQuip}</div>
-        <div style={{...MONO,fontSize:11,color:C.t3}}>
-          📅 {s.retirementAge-s.currentAge} yrs until retirement · {s.lifeExpectancy-s.retirementAge} yrs in retirement
-        </div>
+        <div style={{...MONO,fontSize:11,color:C.t3}}>📅 {s.retirementAge-s.currentAge} yrs until retirement · {s.lifeExpectancy-s.retirementAge} yrs in retirement</div>
       </Card>
       <Card>
         <SL c="💰 Investment Assumptions"/>
@@ -836,16 +795,14 @@ function SettingsTab({settings:s,onChange,onExport,onImport,launchCount,onForceP
         </div>
         <div style={{fontSize:11,color:C.t3,textAlign:"center"}}>Settings auto-save to this device</div>
       </Card>
-      <Card>
-        <SL c="📲 Install as App (PWA)"/>
+      <Card><SL c="📲 Install as App (PWA)"/>
         <div style={{fontSize:12,color:C.t2,lineHeight:1.9}}>
           <b style={{color:C.t1}}>iOS Safari:</b> Tap Share ⎋ → "Add to Home Screen"<br/>
           <b style={{color:C.t1}}>Android Chrome:</b> Tap ⋮ → "Add to Home Screen"<br/>
           <span style={{color:C.t3}}>Fully offline after first load. ✅</span>
         </div>
       </Card>
-      <Card>
-        <SL c="ℹ️ The Math"/>
+      <Card><SL c="ℹ️ The Math"/>
         <div style={{...MONO,fontSize:11,color:C.t3,lineHeight:2.2}}>
           <div>One-time:     FV = PV × (1+r)ⁿ</div>
           <div>Recurring:    FV = PMT × ((1+r)ⁿ−1) / r</div>
@@ -858,13 +815,13 @@ function SettingsTab({settings:s,onChange,onExport,onImport,launchCount,onForceP
           <div>· FV ≥ 1 month → months ÷ retire months</div>
         </div>
       </Card>
-      <Card accent="#EF4444">
-        <SL c="🐛 Debug"/>
+      <Card accent="#EF4444"><SL c="🐛 Debug"/>
         <div style={{...MONO,fontSize:12,color:C.t2,marginBottom:12}}>Launch count: <span style={{color:C.t1,fontWeight:700}}>{launchCount}</span></div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
           <button onClick={onForcePopup} style={{padding:"8px 12px",background:"rgba(251,146,60,.1)",border:`1px solid ${C.orange}44`,borderRadius:10,color:C.orange,fontSize:11,cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>🔔 Force Popup</button>
           <button onClick={onResetLaunches} style={{padding:"8px 12px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,color:C.t2,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Reset Count</button>
-          <button onClick={()=>{if(window.confirm("Clear ALL settings?")){{onChange({...DEF});try{localStorage.removeItem("fc_v1");}catch{}};}}} style={{padding:"8px 12px",background:"rgba(239,68,68,.1)",border:"1px solid rgba(239,68,68,.3)",borderRadius:10,color:C.red,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>🗑️ Clear All</button>
+          <button onClick={()=>{if(window.confirm("Clear ALL settings?")){{onChange({...DEF});try{localStorage.removeItem("fc_v1");}catch{}};}}}
+            style={{padding:"8px 12px",background:"rgba(239,68,68,.1)",border:"1px solid rgba(239,68,68,.3)",borderRadius:10,color:C.red,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>🗑️ Clear All</button>
         </div>
         <details>
           <summary style={{fontSize:11,color:C.t3,cursor:"pointer",marginBottom:8,userSelect:"none"}}>▶ View settings JSON</summary>
@@ -878,20 +835,13 @@ function SettingsTab({settings:s,onChange,onExport,onImport,launchCount,onForceP
 /* ══════════════════════════════════════════════════════════════
    CALC TAB
 ══════════════════════════════════════════════════════════════ */
-function ChevronArrows({color}){
-  return(
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:7,flexShrink:0,width:44}}>
-      {[0,1,2].map(i=>(
-        <div key={i} style={{animation:`chevronSlide 1.5s ease-in-out ${i*0.2}s infinite`}}>
-          <div style={{width:16,height:16,borderTop:`2.5px solid ${color}`,borderRight:`2.5px solid ${color}`,transform:"rotate(45deg)",borderRadius:2}}/>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function CalcTab({dispStr,freq,presetId,showPresets,pendingOp,onPress,onFreq,onPreset,onShowResults,resultPreview}){
+function CalcTab({dispStr,freq,presetId,showPresets,pendingOp,onPress,onFreq,onPreset,onShowResults,resultPreview,ctaTriggerVersion}){
   const[orderedPresets]=useState(()=>shuffle(PRESETS));
+
+  // Count-up for CTA: animates on version bump (preset tap / result first appears),
+  // silently tracks target when just typing digits
+  const animNominal = useCountUpVersioned(resultPreview?.nominal || 0, 850, ctaTriggerVersion);
+
   const BTNS=[
     {l:"AC",t:"AC"},{l:"+/-",t:"fn"},{l:"%",t:"fn"},{l:"÷",t:"op"},
     {l:"7",t:"d"}, {l:"8",t:"d"},   {l:"9",t:"d"},{l:"×",t:"op"},
@@ -917,20 +867,23 @@ function CalcTab({dispStr,freq,presetId,showPresets,pendingOp,onPress,onFreq,onP
     else if(b.t==="eq")onPress("=","=");
     else onPress(b.t,b.l);
   };
+
   const ctaTag=resultPreview
     ?resultPreview.nominal>=1e6?"💀 Million-dollar mistake detected"
     :resultPreview.nominal>=1e5?"😱 Retirement damage: severe"
     :resultPreview.nominal>=1e4?"🤕 Brace yourself..."
     :"👀 You sure about this?":null;
 
+  const numFontSize=animNominal>=1e7?28:animNominal>=1e6?32:animNominal>=1e5?36:42;
+
   return(
     <div>
       {showPresets&&(
         <div style={{display:"flex",overflowX:"auto",gap:7,padding:"8px 0",scrollbarWidth:"none"}}>
           {orderedPresets.map(p=>(
-            <button key={p.id} onClick={()=>onPreset(p)} style={{flexShrink:0,display:"flex",alignItems:"center",
-              gap:4,padding:"5px 10px",cursor:"pointer",whiteSpace:"nowrap",fontSize:11,border:"none",
-              background:presetId===p.id?"rgba(16,240,122,.12)":"rgba(255,255,255,.05)",
+            <button key={p.id} onClick={()=>onPreset(p)} style={{flexShrink:0,display:"flex",
+              alignItems:"center",gap:4,padding:"5px 10px",cursor:"pointer",whiteSpace:"nowrap",
+              fontSize:11,border:"none",background:presetId===p.id?"rgba(16,240,122,.12)":"rgba(255,255,255,.05)",
               outline:`1px solid ${presetId===p.id?C.green+"66":C.border}`,borderRadius:99,
               color:presetId===p.id?C.green:C.t2,fontWeight:presetId===p.id?700:400,fontFamily:"inherit"}}>
               {p.e} {p.label}
@@ -951,7 +904,8 @@ function CalcTab({dispStr,freq,presetId,showPresets,pendingOp,onPress,onFreq,onP
       <div style={{background:"rgba(255,255,255,.04)",border:`1px solid ${C.border}`,
         borderRadius:18,padding:"10px 16px 12px",marginBottom:8}}>
         <div style={{fontSize:10,color:C.t3,marginBottom:2}}>{FREQS.find(f=>f.id===freq)?.label} spend</div>
-        <div style={{...MONO,fontSize:dispStr.length>18?20:dispStr.length>14?26:dispStr.length>10?32:40,
+        <div style={{...MONO,
+          fontSize:dispStr.length>18?20:dispStr.length>14?26:dispStr.length>10?32:40,
           fontWeight:400,letterSpacing:-1,textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",
           whiteSpace:"nowrap",minHeight:48,display:"flex",alignItems:"center",justifyContent:"flex-end",color:C.t1}}>
           {dispStr}
@@ -967,31 +921,82 @@ function CalcTab({dispStr,freq,presetId,showPresets,pendingOp,onPress,onFreq,onP
           </button>
         ))}
       </div>
-      {/* CTA with big number + right-side chevrons */}
-      <button onClick={onShowResults} disabled={!resultPreview} style={{
-        width:"100%",padding:resultPreview?"16px":"13px",
-        background:resultPreview?"linear-gradient(135deg,rgba(16,240,122,.13),rgba(167,139,250,.07))":"rgba(255,255,255,.03)",
-        border:`1.5px solid ${resultPreview?C.green+"66":C.border}`,borderRadius:16,
-        cursor:resultPreview?"pointer":"default",fontFamily:"inherit",transition:"all .2s",
-        boxShadow:resultPreview?`0 0 28px rgba(16,240,122,.08)`:"none"}}>
-        {resultPreview?(
-          <div style={{display:"flex",alignItems:"center"}}>
-            <div style={{width:44,flexShrink:0}}/>
-            <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
-              <span style={{fontSize:12,color:C.t2,fontWeight:600}}>{ctaTag}</span>
-              <span style={{...MONO,
-                fontSize:resultPreview.nominal>=1e7?28:resultPreview.nominal>=1e6?32:resultPreview.nominal>=1e5?36:42,
-                fontWeight:700,letterSpacing:-2,lineHeight:1.1,color:C.green}}>
-                {usd(resultPreview.nominal)}
-              </span>
-              <span style={{fontSize:11,color:C.t2,fontWeight:500}}>in {resultPreview.yrs} yrs · tap to witness the carnage</span>
-            </div>
-            <ChevronArrows color={C.green}/>
+
+      {/* ════════════════════════════════════════════════════════
+          CTA BUTTON — PULSE RINGS design
+          · 3 concentric rings emanate outward (sonar effect)
+          · Spinning conic-gradient creates a rotating border
+          · Number counts up via useCountUpVersioned
+          · Horizontal › › › chevrons on the right
+      ════════════════════════════════════════════════════════ */}
+      <div
+        onClick={resultPreview ? onShowResults : undefined}
+        onPointerDown={e=>{if(resultPreview)e.currentTarget.style.transform="scale(.98)";}}
+        onPointerUp={e=>e.currentTarget.style.transform="scale(1)"}
+        onPointerLeave={e=>e.currentTarget.style.transform="scale(1)"}
+        style={{
+          position:"relative",
+          cursor:resultPreview?"pointer":"default",
+          transition:"transform .1s",
+          /* Let rings overflow freely — no overflow:hidden here */
+        }}
+      >
+        {/* Expanding sonar rings — only show when there's a result */}
+        {resultPreview && [0,1,2].map(i=>(
+          <div key={i} style={{
+            position:"absolute", inset:0, borderRadius:18,
+            border:`1px solid rgba(16,240,122,${0.55 - i*0.15})`,
+            animation:`ringExpand 2.6s ease-out ${i*.87}s infinite`,
+            pointerEvents:"none", zIndex:0,
+          }}/>
+        ))}
+
+        {/* Spinning conic-gradient border wrapper (z:1 covers the rings) */}
+        <div style={{
+          position:"relative", zIndex:1,
+          borderRadius:18, padding:resultPreview?2:1.5,
+          overflow:"hidden",
+          background:resultPreview
+            ?"conic-gradient(#10F07A 0deg,#A78BFA 100deg,rgba(9,12,24,0) 155deg,rgba(9,12,24,0) 290deg,#10F07A 360deg)"
+            :C.border,
+          animation:resultPreview?"borderSpin 3s linear infinite":"none",
+        }}>
+          {/* Inner card */}
+          <div style={{
+            position:"relative", zIndex:1, borderRadius:16,
+            background:resultPreview?"linear-gradient(140deg,#090E1C,#0D1428)":"rgba(255,255,255,.03)",
+            padding:resultPreview?"17px 16px":"13px 16px",
+            animation:resultPreview?"v1glow 2.5s ease-in-out infinite":"none",
+          }}>
+            {resultPreview ? (
+              <div style={{display:"flex",alignItems:"center"}}>
+                {/* Left spacer mirrors chevron width for perfect centering */}
+                <div style={{width:72,flexShrink:0}}/>
+                <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                  <span style={{fontSize:12,color:C.t2,fontWeight:600}}>{ctaTag}</span>
+                  <span style={{
+                    ...MONO, fontSize:numFontSize,
+                    fontWeight:700, color:C.green,
+                    letterSpacing:-2, lineHeight:1.1,
+                    animation:"numberGlow 2.5s ease-in-out infinite",
+                  }}>
+                    {usd(animNominal)}
+                  </span>
+                  <span style={{fontSize:11,color:C.t2,fontWeight:500}}>
+                    in {resultPreview.yrs} yrs · tap to witness the carnage
+                  </span>
+                </div>
+                {/* Horizontal side-by-side chevrons */}
+                <Chevrons color={C.green}/>
+              </div>
+            ) : (
+              <div style={{textAlign:"center"}}>
+                <span style={{fontSize:13,color:C.t3}}>Enter an amount to calculate impact</span>
+              </div>
+            )}
           </div>
-        ):(
-          <span style={{fontSize:13,color:C.t3}}>Enter an amount to calculate impact</span>
-        )}
-      </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1004,11 +1009,8 @@ function SharedBanner({onDismiss}){
     <div style={{margin:"8px 0",padding:"10px 14px",background:"rgba(34,211,238,.08)",
       border:`1px solid ${C.cyan}44`,borderRadius:14,display:"flex",
       alignItems:"center",justifyContent:"space-between",gap:8}}>
-      <span style={{fontSize:12,color:C.cyan}}>
-        🔗 Viewing a shared scenario — settings pre-loaded from link
-      </span>
-      <button onClick={onDismiss} style={{background:"none",border:"none",color:C.t3,
-        cursor:"pointer",fontSize:16,lineHeight:1,fontFamily:"inherit"}}>×</button>
+      <span style={{fontSize:12,color:C.cyan}}>🔗 Viewing a shared scenario — settings pre-loaded from link</span>
+      <button onClick={onDismiss} style={{background:"none",border:"none",color:C.t3,cursor:"pointer",fontSize:16,lineHeight:1,fontFamily:"inherit"}}>×</button>
     </div>
   );
 }
@@ -1038,26 +1040,23 @@ export default function App(){
   const[showPC,     setShowPC]      =useState(false);
   const[launchCount,setLaunchCount] =useState(0);
   const[isShared,   setIsShared]    =useState(false);
+  // Version counter that triggers count-up animation in CTA
+  const[ctaTriggerVersion,setCtaTriggerVersion]=useState(0);
+  const hadResultRef=useRef(false);
 
-  // ── Boot: PWA injection, launch count, URL decode ───────
+  // Boot: PWA + launch count + URL decode
   useEffect(()=>{
     injectPWA();
     try{
       const cnt=parseInt(localStorage.getItem("fc_launches")||"0")+1;
       localStorage.setItem("fc_launches",String(cnt));
       setLaunchCount(cnt);
-
-      // Read URL-shared scenario
       const shared=decodeUrl();
       if(shared){
-        setDisplay(String(shared.amount));
-        setFreq(shared.freq);
-        if(Object.keys(shared.settings).length){
-          setSettings(prev=>({...prev,...shared.settings}));
-        }
+        setDisplay(String(shared.amount));setFreq(shared.freq);
+        if(Object.keys(shared.settings).length)setSettings(prev=>({...prev,...shared.settings}));
         setIsShared(true);
         setTimeout(()=>setShowResults(true),900);
-        // Clean URL so refreshing doesn't re-trigger
         window.history.replaceState({},"",window.location.pathname);
       }else if(cnt===1||cnt%10===0){
         setTimeout(()=>setShowPC(true),900);
@@ -1065,7 +1064,7 @@ export default function App(){
     }catch{}
   },[]);
 
-  // ── Auto-calc FV ──────────────────────────────────────────
+  // Auto-calc FV
   useEffect(()=>{
     const amount=parseFloat(display);
     if(!amount||amount<=0){setResult(null);return;}
@@ -1075,6 +1074,15 @@ export default function App(){
     const presetObj=PRESETS.find(p=>p.id===presetId)||null;
     setResult({amount,freq,nominal,real,months,yrs,presetObj});
   },[display,freq,presetId,settings]);
+
+  // Trigger CTA count-up when a result first appears (was null, now has value)
+  useEffect(()=>{
+    const hasResult=!!(result?.nominal>0);
+    if(hasResult&&!hadResultRef.current){
+      setCtaTriggerVersion(v=>v+1);
+    }
+    hadResultRef.current=hasResult;
+  },[result?.nominal]);
 
   const reRoast=useCallback(()=>{
     if(!result)return;
@@ -1087,7 +1095,6 @@ export default function App(){
   },[result,settings]);
   useEffect(()=>{if(result?.nominal>0)reRoast();},[result?.nominal,settings.characterId,settings.randomizeAdvisor]);// eslint-disable-line
 
-  // ── Calculator ────────────────────────────────────────────
   const press=useCallback((type,val)=>{
     switch(type){
       case"AC":setDisplay("0");setStored(null);setPendingOp(null);setFresh(false);break;
@@ -1112,13 +1119,11 @@ export default function App(){
         if(pendingOp===null||stored===null)break;
         const res=doCalc(stored,parseFloat(display),pendingOp);
         const str=String(parseFloat(res.toFixed(10)));
-        setDisplay(str==="-0"?"0":str);
-        setStored(null);setPendingOp(null);setFresh(true);break;
+        setDisplay(str==="-0"?"0":str);setStored(null);setPendingOp(null);setFresh(true);break;
       }
     }
   },[display,stored,pendingOp,fresh]);
 
-  // ── Keyboard ──────────────────────────────────────────────
   const pressRef=useRef(press),freshRef=useRef(fresh);
   useEffect(()=>{pressRef.current=press;},[press]);
   useEffect(()=>{freshRef.current=fresh;},[fresh]);
@@ -1138,7 +1143,6 @@ export default function App(){
     window.addEventListener("keydown",h);return()=>window.removeEventListener("keydown",h);
   },[]);
 
-  // ── Export / Import ───────────────────────────────────────
   const exportSettings=()=>{
     const b=new Blob([JSON.stringify(settings,null,2)],{type:"application/json"});
     Object.assign(document.createElement("a"),{href:URL.createObjectURL(b),download:"frugal-settings.json"}).click();
@@ -1152,16 +1156,22 @@ export default function App(){
       r.readAsText(f);
     };inp.click();
   };
+
   const selectPreset=p=>{
     const same=p.id===presetId;setPresetId(same?null:p.id);
-    if(!same){setDisplay(String(p.amount));setFreq(p.freq);setStored(null);setPendingOp(null);setFresh(false);}
+    if(!same){
+      setDisplay(String(p.amount));setFreq(p.freq);
+      setStored(null);setPendingOp(null);setFresh(false);
+      // Trigger the count-up animation in the CTA
+      setCtaTriggerVersion(v=>v+1);
+    }
   };
 
   return(
     <>
       <style>{`
         *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-        body{background:${C.bg}}
+        body{background:${C.bg};overflow-x:hidden}
         input[type=range]{-webkit-appearance:none;appearance:none;height:4px;border-radius:99px;outline:none}
         input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;
           border-radius:50%;cursor:pointer;background:currentColor;box-shadow:0 1px 6px rgba(0,0,0,.5)}
@@ -1169,12 +1179,37 @@ export default function App(){
         button{font-family:inherit}
         details>summary{list-style:none}
         details>summary::-webkit-details-marker{display:none}
+
+        /* ── Results panel ────────────────────── */
         @keyframes slideUp{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:translateY(0)}}
-        @keyframes chevronSlide{
-          0%,100%{transform:translateX(-4px);opacity:0.15}
-          50%{transform:translateX(6px);opacity:1}
+
+        /* ── Pulse Ring CTA ───────────────────── */
+        @keyframes ringExpand{
+          0%  {transform:scale(1);   opacity:.65}
+          100%{transform:scale(1.7); opacity:0}
+        }
+        @keyframes borderSpin{
+          from{transform:rotate(0deg)}
+          to  {transform:rotate(360deg)}
+        }
+        @keyframes v1glow{
+          0%,100%{box-shadow:0 0 0 rgba(16,240,122,0)}
+          50%    {box-shadow:0 0 28px rgba(16,240,122,.25),
+                             0 0 56px rgba(16,240,122,.1)}
+        }
+        @keyframes numberGlow{
+          0%,100%{text-shadow:0 0 16px rgba(16,240,122,.4)}
+          50%    {text-shadow:0 0 32px rgba(16,240,122,.95),
+                               0 0 64px rgba(16,240,122,.4)}
+        }
+
+        /* ── Horizontal chevrons ──────────────── */
+        @keyframes chevSlide{
+          0%,100%{transform:translateX(-4px);opacity:.15}
+          50%    {transform:translateX(7px); opacity:1}
         }
       `}</style>
+
       <div style={{minHeight:"100vh",maxWidth:430,margin:"0 auto",
         background:`linear-gradient(160deg,${C.bg} 0%,#0F0822 100%)`,
         color:C.t1,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
@@ -1188,11 +1223,13 @@ export default function App(){
         <div style={{flex:1,overflowY:"auto",padding:"2px 14px 80px"}}>
           {isShared&&<SharedBanner onDismiss={()=>setIsShared(false)}/>}
           {tab==="calc"
-            ?<CalcTab dispStr={fmtDisp(display)} freq={freq} presetId={presetId}
+            ?<CalcTab
+                dispStr={fmtDisp(display)} freq={freq} presetId={presetId}
                 showPresets={settings.showPresets} pendingOp={pendingOp}
                 onPress={press} onFreq={setFreq} onPreset={selectPreset}
                 onShowResults={()=>{if(result?.nominal>0){reRoast();setShowResults(true);}}}
-                resultPreview={result}/>
+                resultPreview={result}
+                ctaTriggerVersion={ctaTriggerVersion}/>
             :<SettingsTab settings={settings} onChange={setSettings}
                 onExport={exportSettings} onImport={importSettings}
                 launchCount={launchCount}
