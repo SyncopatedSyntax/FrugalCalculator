@@ -32,33 +32,47 @@ function useCountUp(target, duration = 950, trigger = false) {
    without re-animating (avoids jank on every keystroke).
 ══════════════════════════════════════════════════════════════ */
 function useCountUpVersioned(target, duration = 850, version = 0) {
-  const [val, setVal] = useState(0);
-  const rafRef    = useRef(null);
-  const animating = useRef(false);
+  const [val, setVal]  = useState(0);
+  const rafRef         = useRef(null);
+  const valRef         = useRef(0);      // mirrors the current displayed value
+  const debounceRef    = useRef(null);
+  const prevVersionRef = useRef(0);
 
-  // Re-animate from 0 only when version increments
-  useEffect(() => {
-    if (!version) { setVal(target); return; }
+  const runAnim = (from, to, dur) => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    animating.current = true;
-    setVal(0);
-    const t0  = performance.now();
-    const end = target;
+    const t0 = performance.now(), diff = to - from;
     const step = (now) => {
-      const p     = Math.min((now - t0) / duration, 1);
+      const p     = Math.min((now - t0) / dur, 1);
       const eased = 1 - (1 - p) ** 3;
-      setVal(Math.round(eased * end));
+      const v     = Math.round(from + eased * diff);
+      valRef.current = v; setVal(v);
       if (p < 1) rafRef.current = requestAnimationFrame(step);
-      else { setVal(end); animating.current = false; }
+      else { valRef.current = to; setVal(to); rafRef.current = null; }
     };
     rafRef.current = requestAnimationFrame(step);
-    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [version]); // eslint-disable-line
+  };
 
-  // Keep in sync with target when no animation is running (plain typing)
   useEffect(() => {
-    if (!animating.current) setVal(target);
-  }, [target]);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (version !== prevVersionRef.current) {
+      // Version bumped (preset tap / first result) → always count from 0
+      prevVersionRef.current = version;
+      runAnim(0, target, duration);
+    } else {
+      // Target changed (typing) → debounce 200 ms, then count from current value
+      debounceRef.current = setTimeout(() => {
+        if (target !== valRef.current)
+          runAnim(valRef.current, target, Math.min(duration, 500));
+      }, 200);
+    }
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [target, version]); // eslint-disable-line
+
+  // Cleanup on unmount
+  useEffect(() => () => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, []);
 
   return val;
 }
@@ -951,17 +965,25 @@ function CalcTab({dispStr,freq,presetId,showPresets,pendingOp,onPress,onFreq,onP
           }}/>
         ))}
 
-        {/* Spinning conic-gradient border wrapper (z:1 covers the rings) */}
+        {/* Border wrapper — overflow:hidden clips the spinning disc to a 2 px border strip */}
         <div style={{
           position:"relative", zIndex:1,
           borderRadius:18, padding:resultPreview?2:1.5,
           overflow:"hidden",
-          background:resultPreview
-            ?"conic-gradient(#10F07A 0deg,#A78BFA 100deg,rgba(9,12,24,0) 155deg,rgba(9,12,24,0) 290deg,#10F07A 360deg)"
-            :C.border,
-          animation:resultPreview?"borderSpin 3s linear infinite":"none",
+          background:resultPreview?"transparent":C.border,
         }}>
-          {/* Inner card */}
+          {/* Spinning disc — ONLY this element rotates; content above is unaffected */}
+          {resultPreview&&(
+            <div style={{
+              position:"absolute", top:"50%", left:"50%",
+              width:"300%", height:"300%",
+              marginLeft:"-150%", marginTop:"-150%",
+              background:"conic-gradient(#10F07A 0deg,#A78BFA 110deg,rgba(9,12,24,0) 165deg,rgba(9,12,24,0) 285deg,#10F07A 360deg)",
+              animation:"borderSpin 3s linear infinite",
+              pointerEvents:"none",
+            }}/>
+          )}
+          {/* Inner card — z-index:1 keeps it above the disc; it never rotates */}
           <div style={{
             position:"relative", zIndex:1, borderRadius:16,
             background:resultPreview?"linear-gradient(140deg,#090E1C,#0D1428)":"rgba(255,255,255,.03)",
