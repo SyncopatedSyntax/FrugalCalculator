@@ -1207,9 +1207,10 @@ export default function App(){
   const[activeChar, setActiveChar]  =useState(CHARS[0]);
   const[showResults,setShowResults] =useState(false);
   const[showShare,  setShowShare]   =useState(false);
-  const[showPC,     setShowPC]      =useState(false);
-  const[launchCount,setLaunchCount] =useState(0);
-  const[isShared,   setIsShared]    =useState(false);
+  const[showPC,        setShowPC]        =useState(false);
+  const[showOnboarding,setShowOnboarding]=useState(false);
+  const[launchCount,   setLaunchCount]   =useState(0);
+  const[isShared,      setIsShared]      =useState(false);
   // Version counter that triggers count-up animation in CTA
   const[ctaTriggerVersion,setCtaTriggerVersion]=useState(0);
   const hadResultRef=useRef(false);
