@@ -254,20 +254,30 @@ function fmtDisp(raw){
   return new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",minimumFractionDigits:dec,maximumFractionDigits:dec}).format(num);
 }
 function cannotAfford(fv){
-  if(fv>=5e6)return"a yacht AND waterfront property";if(fv>=2e6)return"two vacation homes";
-  if(fv>=1e6)return"a vacation home outright";if(fv>=500000)return"a full house down payment";
-  if(fv>=200000)return"a brand-new Tesla Model S";if(fv>=100000)return"a year of private school tuition";
-  if(fv>=50000)return"a fully-loaded SUV";if(fv>=20000)return"a dream trip to Japan, first class";
-  if(fv>=10000)return"a full kitchen renovation";if(fv>=5000)return"a business-class flight to Europe";
-  if(fv>=2000)return"3 months of car payments";if(fv>=500)return"a month of groceries";
+  if(fv>=5e6)    return"a yacht AND a waterfront estate";
+  if(fv>=2e6)    return"two vacation homes";
+  if(fv>=1e6)    return"a vacation home outright";
+  if(fv>=600000) return"a house in most major US cities";
+  if(fv>=380000) return"a house outright in dozens of US cities";
+  if(fv>=220000) return"a Porsche 911 in cash";
+  if(fv>=100000) return"a luxury SUV and a year of travel";
+  if(fv>=55000)  return"a fully-loaded new vehicle";
+  if(fv>=25000)  return"a first-class trip around the world";
+  if(fv>=10000)  return"a full kitchen renovation";
+  if(fv>=5000)   return"a business-class flight to Europe";
+  if(fv>=2000)   return"3 months of car payments";
+  if(fv>=500)    return"a month of groceries";
   return"a nice dinner every week";
 }
 function getPainSubMonthly(pct){
-  if(pct<10)return{col:"#22D469",lbl:"Pocket change... in retirement terms 🪶"};
-  if(pct<25)return{col:"#86EFAC",lbl:"A quarter of your first paycheck 🤏"};
-  if(pct<50)return{col:"#EAB308",lbl:"Half a retirement paycheck 😬"};
-  if(pct<75)return{col:"#F97316",lbl:"Three-quarters of a paycheck. Yikes. 😤"};
-  return      {col:"#EF4444",lbl:"Almost a full retirement paycheck gone 😱"};
+  if(pct>=300)return{col:"#7F1D1D",lbl:`${Math.round(pct/100)}× your entire monthly budget 🚨`};
+  if(pct>=200)return{col:"#991B1B",lbl:"Multiple paychecks — just gone ☢️"};
+  if(pct>=100)return{col:"#DC2626",lbl:"More than a full monthly budget 😰"};
+  if(pct<10)  return{col:"#22D469",lbl:"Pocket change... in retirement terms 🪶"};
+  if(pct<25)  return{col:"#86EFAC",lbl:"A quarter of your first paycheck 🤏"};
+  if(pct<50)  return{col:"#EAB308",lbl:"Half a retirement paycheck 😬"};
+  if(pct<75)  return{col:"#F97316",lbl:"Three-quarters of a paycheck. Yikes. 😤"};
+  return       {col:"#EF4444",lbl:"Almost a full retirement paycheck gone 😱"};
 }
 function getPainMultiMonth(pct){
   if(pct<1) return{col:"#22D469",lbl:"Barely a rounding error 🪶"};
@@ -556,20 +566,20 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
   const multi=amount>0?Math.round(nominal/amount):0;
   const animNominal=useCountUp(nominal,950,visible);
   const retirementMonths=Math.max(1,(settings.lifeExpectancy-settings.retirementAge)*12);
-  const isSubMonthly=nominal<settings.monthlyExpense;
-  let painPct,painSeverity,painScaleLabel,painDetailLabel;
-  if(isSubMonthly){
-    painPct=Math.min(99,(nominal/settings.monthlyExpense)*100);
-    painSeverity=getPainSubMonthly(painPct);
-    painScaleLabel="Monthly Scale";
-    painDetailLabel=`${Math.round(painPct)}% of your ${usd(settings.monthlyExpense)}/mo retirement budget`;
-  }else{
-    painPct=Math.min(100,(nominal/settings.monthlyExpense/retirementMonths)*100);
-    painSeverity=getPainMultiMonth(painPct);
-    painScaleLabel="Retirement Scale";
-    painDetailLabel=`${Math.round(nominal/settings.monthlyExpense)} of your ${retirementMonths} retirement months (${Math.round(painPct)}%)`;
-  }
-  const{col:painCol,lbl:painLbl}=painSeverity;
+  const rawMonths=nominal/settings.monthlyExpense;
+
+  // ── Monthly scale: what fraction of one retirement paycheck ──
+  const monthlyPct  = rawMonths*100;
+  const monthlyBar  = Math.min(100, monthlyPct);
+  const monthlySev  = getPainSubMonthly(monthlyPct);
+  const monthlyDetail = monthlyPct>=100
+    ? `${rawMonths.toFixed(1)}× your ${usd(settings.monthlyExpense)}/mo budget`
+    : `${Math.round(monthlyPct)}% of your ${usd(settings.monthlyExpense)}/mo budget`;
+
+  // ── Retirement scale: what fraction of the total retirement span ──
+  const retirePct    = Math.min(100,(rawMonths/retirementMonths)*100);
+  const retireSev    = getPainMultiMonth(retirePct);
+  const retireDetail = `${Math.round(rawMonths)} of your ${retirementMonths} retirement months (${Math.round(retirePct)}%)`;
   const cant=cannotAfford(nominal);
   return(
     <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,
@@ -610,21 +620,15 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
           <div style={{fontSize:12,color:C.t3,marginTop:6}}>Today's dollars: {usd(real)}</div>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
-          {isSubMonthly?(
-            <div style={{background:"rgba(251,146,60,.09)",border:"1px solid rgba(251,146,60,.22)",borderRadius:14,padding:12,textAlign:"center"}}>
-              <div style={{fontSize:20}}>📅</div>
-              <div style={{...MONO,fontSize:22,fontWeight:700,color:C.orange,lineHeight:1.1}}>{Math.round(painPct)}%</div>
-              <div style={{fontSize:10,color:C.orange,fontWeight:700}}>OF ONE MONTH</div>
-              <div style={{fontSize:11,color:C.t2}}>retirement budget</div>
+          {/* Always show months stolen — decimal if < 1 */}
+          <div style={{background:"rgba(251,146,60,.09)",border:"1px solid rgba(251,146,60,.22)",borderRadius:14,padding:12,textAlign:"center"}}>
+            <div style={{fontSize:20}}>⏳</div>
+            <div style={{...MONO,fontSize:rawMonths<1?20:rawMonths>=100?20:26,fontWeight:700,color:C.orange,lineHeight:1.1}}>
+              {rawMonths<1?rawMonths.toFixed(2):Math.round(rawMonths)}
             </div>
-          ):(
-            <div style={{background:"rgba(251,146,60,.09)",border:"1px solid rgba(251,146,60,.22)",borderRadius:14,padding:12,textAlign:"center"}}>
-              <div style={{fontSize:20}}>⏳</div>
-              <div style={{...MONO,fontSize:26,fontWeight:700,color:C.orange,lineHeight:1.1}}>{Math.round(nominal/settings.monthlyExpense)}</div>
-              <div style={{fontSize:10,color:C.orange,fontWeight:700}}>MONTHS STOLEN</div>
-              <div style={{fontSize:11,color:C.t2}}>of retirement</div>
-            </div>
-          )}
+            <div style={{fontSize:10,color:C.orange,fontWeight:700}}>MONTHS STOLEN</div>
+            <div style={{fontSize:11,color:C.t2}}>of retirement</div>
+          </div>
           <div style={{background:"rgba(16,240,122,.07)",border:"1px solid rgba(16,240,122,.22)",borderRadius:14,padding:12,textAlign:"center"}}>
             <div style={{fontSize:20}}>🚀</div>
             <div style={{...MONO,fontSize:26,fontWeight:700,color:C.green,lineHeight:1.1}}>{multi}×</div>
@@ -632,22 +636,48 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
             <div style={{fontSize:11,color:C.t2}}>if invested now</div>
           </div>
         </div>
+
         <div style={{background:"rgba(252,211,77,.07)",border:"1px solid rgba(252,211,77,.18)",borderRadius:16,padding:14,marginBottom:12}}>
           <div style={{fontSize:10,color:C.gold,fontWeight:700,marginBottom:5}}>💎 WHAT YOU COULD'VE HAD</div>
           <div style={{fontSize:15,color:"#FEF3C7",fontWeight:700}}>👉 {cant.charAt(0).toUpperCase()+cant.slice(1)}</div>
           <div style={{fontSize:11,color:"#92400E",marginTop:4}}>worth {usd(nominal)} at retirement</div>
         </div>
+
+        {/* ── Both pain meters, always shown ── */}
         <div style={{marginBottom:16}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:11,marginBottom:7}}>
-            <span style={{color:C.t2}}>💀 Pain Meter <span style={{fontSize:9,color:C.t3}}>· {painScaleLabel}</span></span>
-            <span style={{color:painCol,fontWeight:700,fontSize:10}}>{painLbl}</span>
+          {/* Monthly scale */}
+          <div style={{marginBottom:13}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:11,marginBottom:6}}>
+              <span style={{color:C.t2}}>
+                💳 vs Monthly Budget
+                <span style={{fontSize:9,color:C.t3,marginLeft:5}}>· Monthly Scale</span>
+              </span>
+              <span style={{color:monthlySev.col,fontWeight:700,fontSize:10}}>{monthlySev.lbl}</span>
+            </div>
+            <div style={{background:"rgba(255,255,255,.12)",borderRadius:99,height:9,overflow:"hidden"}}>
+              <div style={{height:"100%",borderRadius:99,width:`${Math.max(2,monthlyBar)}%`,
+                background:`linear-gradient(90deg,${C.green},${monthlySev.col})`,
+                transition:"width 1s cubic-bezier(.34,1.56,.64,1)"}}/>
+            </div>
+            <div style={{fontSize:11,color:C.t3,marginTop:4}}>{monthlyDetail}</div>
           </div>
-          <div style={{background:"rgba(255,255,255,.12)",borderRadius:99,height:10,overflow:"hidden"}}>
-            <div style={{height:"100%",borderRadius:99,width:`${Math.max(2,painPct)}%`,
-              background:`linear-gradient(90deg,${C.green},${painCol})`,
-              transition:"width 1s cubic-bezier(.34,1.56,.64,1)"}}/>
+
+          {/* Retirement scale */}
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:11,marginBottom:6}}>
+              <span style={{color:C.t2}}>
+                ⚰️ vs Total Retirement
+                <span style={{fontSize:9,color:C.t3,marginLeft:5}}>· Retirement Scale</span>
+              </span>
+              <span style={{color:retireSev.col,fontWeight:700,fontSize:10}}>{retireSev.lbl}</span>
+            </div>
+            <div style={{background:"rgba(255,255,255,.12)",borderRadius:99,height:9,overflow:"hidden"}}>
+              <div style={{height:"100%",borderRadius:99,width:`${Math.max(2,retirePct)}%`,
+                background:`linear-gradient(90deg,${C.green},${retireSev.col})`,
+                transition:"width 1s cubic-bezier(.34,1.56,.64,1)"}}/>
+            </div>
+            <div style={{fontSize:11,color:C.t3,marginTop:4}}>{retireDetail}</div>
           </div>
-          <div style={{fontSize:11,color:C.t3,marginTop:5}}>{painDetailLabel}</div>
         </div>
         <button onClick={onShare} style={{width:"100%",padding:14,background:"rgba(16,240,122,.08)",
           border:`1px solid ${C.green}44`,borderRadius:14,color:C.green,fontWeight:800,
