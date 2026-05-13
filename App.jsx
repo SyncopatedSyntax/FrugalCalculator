@@ -195,24 +195,29 @@ async function generateShareImage({ nominal, real, months, yrs, amount, freq, pr
   ctx.fillStyle = bG; rrect(ctx, pad, bY, bF, bH, 7); ctx.fill();
   // ── QR code linking back to this exact scenario ──────────
   if(shareUrl){
-    const qrApi=`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(shareUrl)}&format=png`;
+    // Separator line between pain meter and QR section
+    ctx.strokeStyle="rgba(255,255,255,.07)"; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pad,922); ctx.lineTo(W-pad,922); ctx.stroke();
+    ctx.fillStyle="#475569"; ctx.font="18px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
+    ctx.fillText("SCAN TO RECREATE THIS SCENARIO",W/2,950);
+
+    const qrApi=`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(shareUrl)}&format=png`;
     try{
       const qrImg=await loadImage(qrApi);
-      const qrS=160, qrX=(W-qrS)/2, qrY=998;
-      // Light background so QR is always scannable
+      const qrS=150, qrX=(W-qrS)/2, qrY=968;
+      // White background so QR is always scannable against dark canvas
       ctx.fillStyle="#F1F5F9";
-      rrect(ctx,qrX-12,qrY-12,qrS+24,qrS+24,14); ctx.fill();
+      rrect(ctx,qrX-10,qrY-10,qrS+20,qrS+20,12); ctx.fill();
       ctx.drawImage(qrImg,qrX,qrY,qrS,qrS);
-      ctx.fillStyle="#64748B"; ctx.font="20px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
-      ctx.fillText("Scan to view this scenario",W/2,qrY+qrS+36);
     }catch{
-      // QR failed — just show the URL text
-      ctx.fillStyle="#334155"; ctx.font="20px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
-      ctx.fillText(shareUrl.substring(0,60)+(shareUrl.length>60?"...":""),W/2,1060);
+      // QR failed — show URL as text instead
+      ctx.fillStyle="#334155"; ctx.font="18px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
+      ctx.fillText(shareUrl.substring(0,58)+(shareUrl.length>58?"...":""),W/2,1040);
     }
   }
-  ctx.fillStyle="#1E293B"; ctx.font="20px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
-  ctx.fillText("frugalcalculator.app  \u00b7  Your future self says: stop spending.",W/2,1180);
+  // Watermark — always sits above the bottom accent bar
+  ctx.fillStyle="#1E293B"; ctx.font="18px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
+  ctx.fillText("frugalcalculator.app  \u00b7  Your future self says: stop spending.",W/2,1170);
   return cvs.toDataURL("image/png");
 }
 
