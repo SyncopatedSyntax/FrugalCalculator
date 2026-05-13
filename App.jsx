@@ -105,8 +105,18 @@ function wrapText(ctx, text, x, y, maxW, lh) {
   ctx.fillText(line.trim(), x, y + count * lh);
   return count + 1;
 }
-function generateShareImage({ nominal, real, months, yrs, amount, freq, presetObj, char, quote, settings }) {
-  const W = 1080, H = 1080, pad = 80;
+function loadImage(src){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.crossOrigin="anonymous";
+    img.onload=()=>resolve(img);
+    img.onerror=()=>reject(new Error("Image load failed"));
+    img.src=src;
+  });
+}
+
+async function generateShareImage({ nominal, real, months, yrs, amount, freq, presetObj, char, quote, settings, shareUrl }) {
+  const W = 1080, H = 1200, pad = 80;
   const cvs = document.createElement("canvas");
   cvs.width = W; cvs.height = H;
   const ctx = cvs.getContext("2d");
@@ -183,8 +193,26 @@ function generateShareImage({ nominal, real, months, yrs, amount, freq, presetOb
   bG.addColorStop(0, "#10F07A");
   bG.addColorStop(1, pct > 60 ? "#7F1D1D" : pct > 30 ? "#EF4444" : pct > 10 ? "#F97316" : "#22D469");
   ctx.fillStyle = bG; rrect(ctx, pad, bY, bF, bH, 7); ctx.fill();
-  ctx.fillStyle = "#1E293B"; ctx.font = "20px Arial,Helvetica,sans-serif"; ctx.textAlign = "center";
-  ctx.fillText("frugalcalculator.app  \u00b7  Your future self says: stop spending.", W / 2, 960);
+  // ── QR code linking back to this exact scenario ──────────
+  if(shareUrl){
+    const qrApi=`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(shareUrl)}&format=png`;
+    try{
+      const qrImg=await loadImage(qrApi);
+      const qrS=160, qrX=(W-qrS)/2, qrY=998;
+      // Light background so QR is always scannable
+      ctx.fillStyle="#F1F5F9";
+      rrect(ctx,qrX-12,qrY-12,qrS+24,qrS+24,14); ctx.fill();
+      ctx.drawImage(qrImg,qrX,qrY,qrS,qrS);
+      ctx.fillStyle="#64748B"; ctx.font="20px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
+      ctx.fillText("Scan to view this scenario",W/2,qrY+qrS+36);
+    }catch{
+      // QR failed — just show the URL text
+      ctx.fillStyle="#334155"; ctx.font="20px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
+      ctx.fillText(shareUrl.substring(0,60)+(shareUrl.length>60?"...":""),W/2,1060);
+    }
+  }
+  ctx.fillStyle="#1E293B"; ctx.font="20px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
+  ctx.fillText("frugalcalculator.app  \u00b7  Your future self says: stop spending.",W/2,1180);
   return cvs.toDataURL("image/png");
 }
 
@@ -823,21 +851,23 @@ function ShareModal({result,quote,char,settings,onClose}){
   const shareUrl=encodeUrl(result,settings);
   const copyText=()=>navigator.clipboard.writeText(shareText).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);});
   const copyUrl=()=>navigator.clipboard.writeText(shareUrl).then(()=>{setUrlCopied(true);setTimeout(()=>setUrlCopied(false),2500);});
-  const downloadImage=()=>{
+  const downloadImage=async()=>{
     setImgBusy(true);
-    try{const d=generateShareImage({nominal,real:0,months,yrs,amount,freq,presetObj,char,quote,settings});
+    try{
+      const d=await generateShareImage({nominal,real:0,months,yrs,amount,freq,presetObj,char,quote,settings,shareUrl});
       Object.assign(document.createElement("a"),{href:d,download:"frugal-shame.png"}).click();
     }catch(e){alert("Couldn't generate image: "+e.message);}
     finally{setImgBusy(false);}
   };
   const shareImage=async()=>{
     setImgBusy(true);
-    try{const d=generateShareImage({nominal,real:0,months,yrs,amount,freq,presetObj,char,quote,settings});
+    try{
+      const d=await generateShareImage({nominal,real:0,months,yrs,amount,freq,presetObj,char,quote,settings,shareUrl});
       const res=await fetch(d);const blob=await res.blob();
       const file=new File([blob],"frugal-calculator.png",{type:"image/png"});
       if(navigator.canShare?.({files:[file]}))await navigator.share({files:[file],title:"Frugal Calculator"});
-      else downloadImage();
-    }catch(e){if(e.name!=="AbortError")downloadImage();}
+      else Object.assign(document.createElement("a"),{href:d,download:"frugal-shame.png"}).click();
+    }catch(e){if(e.name!=="AbortError")console.error("Share failed:",e);}
     finally{setImgBusy(false);}
   };
   return(
@@ -902,7 +932,7 @@ function ShareModal({result,quote,char,settings,onClose}){
 /* ══════════════════════════════════════════════════════════════
    SETTINGS TAB
 ══════════════════════════════════════════════════════════════ */
-function SettingsTab({settings:s,onChange,onExport,onImport,launchCount,onForcePopup,onResetLaunches}){
+function SettingsTab({settings:s,onChange,onExport,onImport,launchCount,onForcePopup,onForceOnboard,onResetLaunches}){
   const upd=(k,v)=>onChange(p=>({...p,[k]:v}));
   const lifeQuip=
     s.lifeExpectancy<=70?"You okay? That seems low. Maybe talk to someone. 💙"
@@ -981,6 +1011,7 @@ function SettingsTab({settings:s,onChange,onExport,onImport,launchCount,onForceP
         <div style={{...MONO,fontSize:12,color:C.t2,marginBottom:12}}>Launch count: <span style={{color:C.t1,fontWeight:700}}>{launchCount}</span></div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
           <button onClick={onForcePopup} style={{padding:"8px 12px",background:"rgba(251,146,60,.1)",border:`1px solid ${C.orange}44`,borderRadius:10,color:C.orange,fontSize:11,cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>🔔 Force Popup</button>
+          <button onClick={onForceOnboard} style={{padding:"8px 12px",background:"rgba(167,139,250,.1)",border:`1px solid ${C.purple}44`,borderRadius:10,color:C.purple,fontSize:11,cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>🎓 Force Onboarding</button>
           <button onClick={onResetLaunches} style={{padding:"8px 12px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,color:C.t2,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Reset Count</button>
           <button onClick={()=>{if(window.confirm("Clear ALL settings?")){{onChange({...DEF});try{localStorage.removeItem("fc_v1");}catch{}};}}}
             style={{padding:"8px 12px",background:"rgba(239,68,68,.1)",border:"1px solid rgba(239,68,68,.3)",borderRadius:10,color:C.red,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>🗑️ Clear All</button>
@@ -1229,8 +1260,15 @@ export default function App(){
         setIsShared(true);
         setTimeout(()=>setShowResults(true),900);
         window.history.replaceState({},"",window.location.pathname);
-      }else if(cnt===1||cnt%10===0){
-        setTimeout(()=>setShowPC(true),900);
+      }else{
+        const onboarded=localStorage.getItem("fc_onboarded");
+        if(!onboarded){
+          // First launch or "remind me next time" — show onboarding
+          setTimeout(()=>setShowOnboarding(true),700);
+        }else if(cnt%10===0){
+          // Periodic settings check for returning users
+          setTimeout(()=>setShowPC(true),900);
+        }
       }
     }catch{}
   },[]);
@@ -1405,6 +1443,10 @@ export default function App(){
                 onExport={exportSettings} onImport={importSettings}
                 launchCount={launchCount}
                 onForcePopup={()=>setShowPC(true)}
+                onForceOnboard={()=>{
+                  try{localStorage.removeItem("fc_onboarded");}catch{}
+                  setShowOnboarding(true);
+                }}
                 onResetLaunches={()=>{try{localStorage.setItem("fc_launches","0");setLaunchCount(0);}catch{}}}/>
           }
         </div>
@@ -1433,6 +1475,17 @@ export default function App(){
         {showPC&&<ParamCheckPopup settings={settings} launchCount={launchCount}
           onConfirm={()=>setShowPC(false)}
           onSettings={()=>{setShowPC(false);setTab("settings");}}/>}
+
+        {showOnboarding&&<OnboardingPopup settings={settings}
+          onSettings={()=>{
+            try{localStorage.setItem("fc_onboarded","true");}catch{}
+            setShowOnboarding(false);setTab("settings");
+          }}
+          onRemind={()=>setShowOnboarding(false)}
+          onDismiss={()=>{
+            try{localStorage.setItem("fc_onboarded","true");}catch{}
+            setShowOnboarding(false);
+          }}/>}
       </div>
     </>
   );
