@@ -558,8 +558,126 @@ function ParamCheckPopup({settings,launchCount,onConfirm,onSettings}){
 }
 
 /* ══════════════════════════════════════════════════════════════
-   RESULTS PANEL  (slides from right, count-up on FV)
+   ONBOARDING POPUP — first-launch intro
+   Funny but educational. Three dismiss options:
+   go to settings / remind me next time / never show again.
 ══════════════════════════════════════════════════════════════ */
+const ONBOARD_STEPS = [
+  { icon:"🔢", title:"Enter what you spend",
+    body:"Type any amount into the calculator. A latte, a car payment, a boat — no judgment. (Okay, some judgment.)" },
+  { icon:"⏱️", title:"Pick the frequency",
+    body:"One-time splurge or a recurring habit? Daily, weekly, monthly — each compounds very differently. That's the whole point." },
+  { icon:"💥", title:"Tap the big green button",
+    body:"Watch that number transform into what it could have been at retirement. It will hurt. That's intentional." },
+  { icon:"😭", title:"Share the carnage",
+    body:"Forward it to whoever also buys too many lattes. Suffering is better as a group activity." },
+];
+function OnboardingPopup({ settings, onSettings, onRemind, onDismiss }) {
+  return (
+    <div style={{ position:"fixed", inset:0,
+      background:"rgba(0,0,0,.93)", backdropFilter:"blur(16px)",
+      display:"flex", alignItems:"flex-end", justifyContent:"center",
+      zIndex:400, padding:"0 14px 14px",
+      paddingBottom:"max(14px,env(safe-area-inset-bottom))" }}>
+      <div style={{
+        background:"linear-gradient(160deg,#0D0A27,#140E34)",
+        border:`1px solid ${C.purple}55`,
+        borderRadius:28, padding:"22px 20px",
+        width:"100%", maxWidth:420,
+        maxHeight:"92vh", overflowY:"auto",
+        animation:"slideUp .4s cubic-bezier(.34,1.56,.64,1)",
+      }}>
+        {/* Header */}
+        <div style={{ textAlign:"center", marginBottom:20 }}>
+          <div style={{ fontSize:44, marginBottom:10, lineHeight:1 }}>💸</div>
+          <div style={{ fontSize:20, fontWeight:900, color:C.t1,
+            letterSpacing:-.4, marginBottom:8 }}>
+            Welcome to Frugal Calculator
+          </div>
+          <div style={{ fontSize:13, color:C.t2, lineHeight:1.7 }}>
+            The app that turns your spending into an existential crisis.<br/>
+            You're going to love it. And also feel sick.
+          </div>
+        </div>
+
+        {/* How it works */}
+        <div style={{ background:"rgba(255,255,255,.04)", border:`1px solid ${C.border}`,
+          borderRadius:18, padding:16, marginBottom:14 }}>
+          <div style={{ fontSize:10, color:C.purple, fontWeight:800,
+            letterSpacing:1.5, marginBottom:14 }}>HOW IT WORKS</div>
+          {ONBOARD_STEPS.map((s, i) => (
+            <div key={i} style={{ display:"flex", gap:12,
+              marginBottom: i < ONBOARD_STEPS.length - 1 ? 14 : 0,
+              paddingBottom: i < ONBOARD_STEPS.length - 1 ? 14 : 0,
+              borderBottom: i < ONBOARD_STEPS.length - 1
+                ? "1px solid rgba(255,255,255,.05)" : "none" }}>
+              <span style={{ fontSize:24, flexShrink:0, width:32, lineHeight:1.2,
+                textAlign:"center" }}>{s.icon}</span>
+              <div>
+                <div style={{ fontSize:13, fontWeight:800, color:C.t1,
+                  marginBottom:3 }}>{s.title}</div>
+                <div style={{ fontSize:12, color:C.t3, lineHeight:1.55 }}>{s.body}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Settings preview */}
+        <div style={{ background:"rgba(255,255,255,.04)", border:`1px solid ${C.border}`,
+          borderRadius:18, padding:16, marginBottom:20 }}>
+          <div style={{ fontSize:10, color:C.cyan, fontWeight:800,
+            letterSpacing:1.5, marginBottom:6 }}>ALSO — YOUR SETTINGS</div>
+          <div style={{ fontSize:12, color:C.t3, lineHeight:1.6, marginBottom:12 }}>
+            The math is only as accurate as these numbers. Wrong age?
+            Wrong rate? The roasts will be technically incorrect.
+            Fix them before you start crying.
+          </div>
+          {[
+            { l:"Current age",           v:`${settings.currentAge}` },
+            { l:"Retirement age",        v:`${settings.retirementAge}` },
+            { l:"Planned checkout age",  v:`${settings.lifeExpectancy}` },
+            { l:"Annual growth rate",    v:`${settings.growthRate}%` },
+            { l:"Inflation rate",        v:`${settings.inflationRate}%` },
+            { l:"Monthly budget at retirement", v:usd(settings.monthlyExpense) },
+          ].map((r, i, a) => (
+            <div key={i} style={{ display:"flex", justifyContent:"space-between",
+              padding:"6px 0",
+              borderBottom: i < a.length - 1 ? "1px solid rgba(255,255,255,.05)" : "none" }}>
+              <span style={{ color:C.t3, fontSize:12 }}>{r.l}</span>
+              <span style={{ ...MONO, color:C.t2, fontSize:12, fontWeight:700 }}>{r.v}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Buttons */}
+        <div style={{ display:"flex", flexDirection:"column", gap:9 }}>
+          <button onClick={onSettings}
+            style={{ padding:13, background:"rgba(167,139,250,.1)",
+              border:`1px solid ${C.purple}55`, borderRadius:14,
+              color:C.purple, fontWeight:700, cursor:"pointer",
+              fontSize:14, fontFamily:"inherit" }}>
+            ⚙️ Let Me Fix My Settings First
+          </button>
+          <button onClick={onRemind}
+            style={{ padding:12, background:"none",
+              border:`1px solid ${C.border}`, borderRadius:14,
+              color:C.t3, fontWeight:600, cursor:"pointer",
+              fontSize:13, fontFamily:"inherit" }}>
+            🔔 Remind Me Next Time
+          </button>
+          <button onClick={onDismiss}
+            style={{ padding:14, background:C.green, border:"none",
+              borderRadius:14, color:"#000", fontWeight:900,
+              cursor:"pointer", fontSize:15, fontFamily:"inherit" }}>
+            ✅ Got It — Start Regretting My Choices
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRoast}){
   if(!result||result.nominal<=0)return null;
   const{nominal,real,months,yrs,amount}=result;
