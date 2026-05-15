@@ -1325,7 +1325,7 @@ export default function App(){
   });
   useEffect(()=>{try{localStorage.setItem("fc_v1",JSON.stringify(settings));}catch{}},[settings]);
 
-  const[tab,        setTab]         =useState("calc");
+  const[showSettings,setShowSettings] =useState(false);
   const[display,    setDisplay]     =useState("0");
   const[stored,     setStored]      =useState(null);
   const[pendingOp,  setPendingOp]   =useState(null);
@@ -1523,45 +1523,70 @@ export default function App(){
         color:C.t1,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
         display:"flex",flexDirection:"column"}}>
 
-        <div style={{padding:"14px 16px 6px",flexShrink:0}}>
-          <div style={{fontSize:19,fontWeight:900,letterSpacing:-.5}}>💸 Frugal Calculator</div>
-          <div style={{fontSize:10,color:C.t3,marginTop:1}}>Your future self is watching. And crying.</div>
+        {/* ── App header with inline ⚙️ button ── */}
+        <div style={{padding:"14px 16px 8px",flexShrink:0,
+          display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontSize:19,fontWeight:900,letterSpacing:-.5}}>💸 Frugal Calculator</div>
+            <div style={{fontSize:10,color:C.t3,marginTop:1}}>Your future self is watching. And crying.</div>
+          </div>
+          <button onClick={()=>setShowSettings(true)} style={{
+            width:38,height:38,borderRadius:11,flexShrink:0,
+            background:"rgba(255,255,255,.06)",border:`1px solid ${C.border}`,
+            display:"flex",alignItems:"center",justifyContent:"center",
+            cursor:"pointer",fontSize:19,fontFamily:"inherit",
+            transition:"background .15s, border-color .15s",
+          }}
+            onPointerDown={e=>{e.currentTarget.style.background="rgba(16,240,122,.12)";e.currentTarget.style.borderColor=C.green+"66";}}
+            onPointerUp={e=>{e.currentTarget.style.background="rgba(255,255,255,.06)";e.currentTarget.style.borderColor=`rgba(255,255,255,.09)`;}}
+            onPointerLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,.06)";e.currentTarget.style.borderColor=`rgba(255,255,255,.09)`;}}
+            title="Settings">
+            ⚙️
+          </button>
         </div>
 
-        <div style={{flex:1,overflowY:"auto",padding:"2px 14px 80px"}}>
+        {/* ── Main calculator (full height, no bottom bar) ── */}
+        <div style={{flex:1,overflowY:"auto",padding:"2px 14px 24px"}}>
           {isShared&&<SharedBanner onDismiss={()=>setIsShared(false)}/>}
-          {tab==="calc"
-            ?<CalcTab
-                dispStr={fmtDisp(display)} freq={freq} presetId={presetId}
-                showPresets={settings.showPresets} pendingOp={pendingOp}
-                onPress={press} onFreq={setFreq} onPreset={selectPreset}
-                onShowResults={()=>{if(result?.nominal>0){reRoast();setShowResults(true);}}}
-                resultPreview={result}
-                ctaTriggerVersion={ctaTriggerVersion}/>
-            :<SettingsTab settings={settings} onChange={setSettings}
-                onExport={exportSettings} onImport={importSettings}
-                launchCount={launchCount}
-                onForcePopup={()=>setShowPC(true)}
-                onForceOnboard={()=>{
-                  try{localStorage.removeItem("fc_onboarded");}catch{}
-                  setShowOnboarding(true);
-                }}
-                onResetLaunches={()=>{try{localStorage.setItem("fc_launches","0");setLaunchCount(0);}catch{}}}/>
-          }
+          <CalcTab
+            dispStr={fmtDisp(display)} freq={freq} presetId={presetId}
+            showPresets={settings.showPresets} pendingOp={pendingOp}
+            onPress={press} onFreq={setFreq} onPreset={selectPreset}
+            onShowResults={()=>{if(result?.nominal>0){reRoast();setShowResults(true);}}}
+            resultPreview={result}
+            ctaTriggerVersion={ctaTriggerVersion}/>
         </div>
 
-        <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",
-          width:"100%",maxWidth:430,zIndex:100,background:"rgba(7,7,26,.97)",
-          backdropFilter:"blur(20px)",borderTop:`1px solid ${C.border}`,
-          display:"flex",paddingBottom:"max(env(safe-area-inset-bottom,0px),8px)"}}>
-          {[{id:"calc",icon:"🧮",label:"Calculator"},{id:"settings",icon:"⚙️",label:"Settings"}].map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,background:"none",border:"none",
-              cursor:"pointer",color:tab===t.id?C.green:C.t3,
-              padding:"10px 0 6px",display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
-              <span style={{fontSize:22}}>{t.icon}</span>
-              <span style={{fontSize:10,fontWeight:tab===t.id?700:400}}>{t.label}</span>
-            </button>
-          ))}
+        {/* ── Settings — slides in from right (same as ResultsPanel) ── */}
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,
+          background:`linear-gradient(160deg,${C.bg} 0%,#100A2A 100%)`,
+          transform:`translateX(${showSettings?"0":"100%"})`,
+          transition:"transform 0.32s cubic-bezier(0.25,0.46,0.45,0.94)",
+          zIndex:150,overflowY:"auto",overflowX:"hidden",maxWidth:430,margin:"0 auto"}}>
+          <div style={{position:"sticky",top:0,background:"rgba(7,7,26,.96)",backdropFilter:"blur(20px)",
+            padding:"12px 16px",borderBottom:`1px solid ${C.border}`,
+            display:"flex",alignItems:"center",gap:12,zIndex:1}}>
+            <button onClick={()=>setShowSettings(false)} style={{
+              background:"rgba(16,240,122,.14)",border:`1px solid ${C.green}55`,
+              borderRadius:12,width:46,height:46,display:"flex",alignItems:"center",
+              justifyContent:"center",cursor:"pointer",color:C.green,
+              fontSize:22,flexShrink:0,fontFamily:"inherit",fontWeight:700}}>←</button>
+            <div>
+              <div style={{fontSize:13,fontWeight:800,color:C.t1}}>Settings</div>
+              <div style={{fontSize:11,color:C.t3}}>Your profile & preferences</div>
+            </div>
+          </div>
+          <div style={{padding:"0 14px 60px"}}>
+            <SettingsTab settings={settings} onChange={setSettings}
+              onExport={exportSettings} onImport={importSettings}
+              launchCount={launchCount}
+              onForcePopup={()=>setShowPC(true)}
+              onForceOnboard={()=>{
+                try{localStorage.removeItem("fc_onboarded");}catch{}
+                setShowOnboarding(true);
+              }}
+              onResetLaunches={()=>{try{localStorage.setItem("fc_launches","0");setLaunchCount(0);}catch{}}}/>
+          </div>
         </div>
 
         {result&&<ResultsPanel visible={showResults} onClose={()=>setShowResults(false)}
@@ -1573,12 +1598,12 @@ export default function App(){
 
         {showPC&&<ParamCheckPopup settings={settings} launchCount={launchCount}
           onConfirm={()=>setShowPC(false)}
-          onSettings={()=>{setShowPC(false);setTab("settings");}}/>}
+          onSettings={()=>{setShowPC(false);setShowSettings(true);}}/>}
 
         {showOnboarding&&<OnboardingPopup settings={settings}
           onSettings={()=>{
             try{localStorage.setItem("fc_onboarded","true");}catch{}
-            setShowOnboarding(false);setTab("settings");
+            setShowOnboarding(false);setShowSettings(true);
           }}
           onRemind={()=>setShowOnboarding(false)}
           onDismiss={()=>{
