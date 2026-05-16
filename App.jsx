@@ -144,15 +144,15 @@ async function generateShareImage({ nominal, real, months, yrs, amount, freq, pr
   // ── Derived values ───────────────────────────────────────
   const fmtC  = n => new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(n);
   const fmtC2 = n => new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2}).format(n);
-  const rawM  = nominal / settings.monthlyExpense;
+  const rawM  = real / settings.monthlyExpense;
   const retM  = Math.max(1,(settings.lifeExpectancy - settings.retirementAge) * 12);
   const mPct  = rawM * 100;
   const mBar  = Math.min(100, mPct);
   const mSev  = getPainSubMonthly(mPct);
   const rPct  = Math.min(100,(rawM / retM) * 100);
   const rSev  = getPainMultiMonth(rPct);
-  const cant  = cannotAfford(nominal);
-  const multi = amount > 0 ? Math.round(nominal / amount) : 0;
+  const cant  = cannotAfford(real);
+  const multi = amount > 0 ? Math.round(real / amount) : 0;
   const shortN= n => n>=10000?`${(n/1000).toFixed(0)}K`:n>=1000?`${(n/1000).toFixed(1)}K`:String(n);
   // Char colour as rgb components for rgba()
   const hx = char.col.replace("#","");
@@ -247,15 +247,15 @@ async function generateShareImage({ nominal, real, months, yrs, amount, freq, pr
   numGlow.addColorStop(0,"rgba(16,240,122,.13)"); numGlow.addColorStop(1,"rgba(16,240,122,0)");
   ctx.fillStyle = numGlow; ctx.fillRect(0,258,W,240);
   ctx.fillStyle = col.text3; ctx.font = T.capBold; ctx.textAlign = "center";
-  ctx.fillText("BECOMES", W/2, Y.becomesLabel);
-  const nomStr = fmtC(nominal);
+  ctx.fillText("BECOMES (INFLATION-ADJUSTED)", W/2, Y.becomesLabel);
+  const nomStr = fmtC(real);
   const nFs = nomStr.length>13?88:nomStr.length>11?104:nomStr.length>9?118:132;
   ctx.fillStyle = col.green;
   ctx.font = `bold ${nFs}px 'Courier New',Courier,monospace`;
   ctx.textAlign = "center";
   ctx.fillText(nomStr, W/2, Y.bigNumber);
   ctx.fillStyle = col.text3; ctx.font = T.body; ctx.textAlign = "center";
-  ctx.fillText(`In today's dollars: ${fmtC(real)}`, W/2, Y.todayDollars);
+  ctx.fillText(`Inflation-adjusted  ·  nominal: ${fmtC(nominal)}`, W/2, Y.todayDollars);
 
   // ── CHARACTER QUOTE BUBBLE ────────────────────────────────
   // Layout inside bubble:
@@ -875,10 +875,10 @@ function OnboardingPopup({ settings, onSettings, onRemind, onDismiss }) {
 function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRoast}){
   if(!result||result.nominal<=0)return null;
   const{nominal,real,months,yrs,amount}=result;
-  const multi=amount>0?Math.round(nominal/amount):0;
-  const animNominal=useCountUp(nominal,950,visible);
+  const multi=amount>0?Math.round(real/amount):0;
+  const animReal=useCountUp(real,950,visible);
   const retirementMonths=Math.max(1,(settings.lifeExpectancy-settings.retirementAge)*12);
-  const rawMonths=nominal/settings.monthlyExpense;
+  const rawMonths=real/settings.monthlyExpense;
 
   // ── Monthly scale: what fraction of one retirement paycheck ──
   const monthlyPct  = rawMonths*100;
@@ -892,7 +892,7 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
   const retirePct    = Math.min(100,(rawMonths/retirementMonths)*100);
   const retireSev    = getPainMultiMonth(retirePct);
   const retireDetail = `${Math.round(rawMonths)} of your ${retirementMonths} retirement months (${Math.round(retirePct)}%)`;
-  const cant=cannotAfford(nominal);
+  const cant=cannotAfford(real);
   return(
     <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,
       background:`linear-gradient(160deg,${C.bg} 0%,#100A2A 100%)`,
@@ -924,12 +924,28 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
             border:"none",borderRadius:10,color:C.t2,cursor:"pointer",fontFamily:"inherit"}}>🎲 Roast me again</button>
         </div>
         <div style={{textAlign:"center",padding:"18px 0 14px"}}>
-          <div style={{fontSize:12,color:C.t2,marginBottom:5}}>Future value in {yrs} yrs · {settings.growthRate}% return</div>
-          <div style={{...MONO,fontSize:nominal>9999999?30:nominal>999999?36:48,
-            fontWeight:700,color:C.green,letterSpacing:-2,lineHeight:1}}>
-            {usd(animNominal)}
+          <div style={{fontSize:12,color:C.t2,marginBottom:5}}>
+            Inflation-adjusted · {yrs} yrs · {settings.growthRate}% nominal / {settings.inflationRate}% inflation
           </div>
-          <div style={{fontSize:12,color:C.t3,marginTop:6}}>Today's dollars: {usd(real)}</div>
+          {/* Primary: real value in green */}
+          <div style={{...MONO,fontSize:real>9999999?30:real>999999?36:48,
+            fontWeight:700,color:C.green,letterSpacing:-2,lineHeight:1}}>
+            {usd(animReal)}
+          </div>
+          {/* Secondary: nominal — visually impactful but clearly subordinate */}
+          <div style={{marginTop:12,display:"inline-flex",flexDirection:"column",
+            alignItems:"center",gap:4,padding:"8px 18px",
+            background:"rgba(107,79,157,.18)",
+            border:`1px solid rgba(167,139,250,.18)`,
+            borderRadius:12}}>
+            <span style={{fontSize:10,color:"#9370CC",fontWeight:800,letterSpacing:.8}}>
+              NOMINAL · BEFORE INFLATION
+            </span>
+            <span style={{...MONO,fontSize:nominal>9999999?18:nominal>999999?22:26,
+              fontWeight:700,color:"#B89EE8",letterSpacing:-1,lineHeight:1}}>
+              {usd(nominal)}
+            </span>
+          </div>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
           {/* Always show months stolen — decimal if < 1 */}
@@ -952,7 +968,7 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
         <div style={{background:"rgba(252,211,77,.07)",border:"1px solid rgba(252,211,77,.18)",borderRadius:16,padding:14,marginBottom:12}}>
           <div style={{fontSize:10,color:C.gold,fontWeight:700,marginBottom:5}}>💎 WHAT YOU COULD'VE HAD</div>
           <div style={{fontSize:15,color:"#FEF3C7",fontWeight:700}}>👉 {cant.charAt(0).toUpperCase()+cant.slice(1)}</div>
-          <div style={{fontSize:11,color:"#92400E",marginTop:4}}>worth {usd(nominal)} at retirement</div>
+          <div style={{fontSize:11,color:"#92400E",marginTop:4}}>worth {usd(real)} in today's dollars</div>
         </div>
 
         {/* ── Both pain meters, always shown ── */}
@@ -1011,7 +1027,7 @@ function ShareModal({result,quote,char,settings,onClose}){
   const[copied,setCopied]=useState(false);
   const[urlCopied,setUrlCopied]=useState(false);
   const[imgBusy,setImgBusy]=useState(false);
-  const shareText=["💸 Frugal Calculator","",`My ${freqLbl} ${item} = ${usd(nominal)} at retirement.`,
+  const shareText=["💸 Frugal Calculator","",`My ${freqLbl} ${item} = ${usd(real)} at retirement (inflation-adjusted).`,
     `That's ${months} months of retirement income GONE! 😱`,"",
     `${char.av} "${quote.substring(0,100)}..."`,""," 📲 frugalcalculator.app",].join("\n");
   const shareUrl=encodeUrl(result,settings);
@@ -1046,7 +1062,7 @@ function ShareModal({result,quote,char,settings,onClose}){
           border:`1px solid ${char.col}44`,borderRadius:16,padding:20,marginBottom:16,textAlign:"center"}}>
           <div style={{fontSize:11,color:char.col,fontWeight:800,letterSpacing:2,marginBottom:6}}>💸 FRUGAL CALCULATOR</div>
           <div style={{fontSize:12,color:C.t3,marginBottom:8}}>{freqLbl} {item}</div>
-          <div style={{...MONO,fontSize:36,fontWeight:700,color:C.green,letterSpacing:-1}}>{usd(nominal)}</div>
+          <div style={{...MONO,fontSize:36,fontWeight:700,color:C.green,letterSpacing:-1}}>{usd(real)}</div>
           <div style={{fontSize:11,color:C.t3,marginBottom:10}}>at retirement · {yrs} years</div>
           <div style={{padding:"8px 14px",background:"rgba(251,146,60,.12)",border:"1px solid rgba(251,146,60,.3)",
             borderRadius:10,display:"inline-flex",alignItems:"center",gap:8}}>
@@ -1199,7 +1215,7 @@ function CalcTab({dispStr,freq,presetId,showPresets,pendingOp,onPress,onFreq,onP
 
   // Count-up for CTA: animates on version bump (preset tap / result first appears),
   // silently tracks target when just typing digits
-  const animNominal = useCountUpVersioned(resultPreview?.nominal || 0, 850, ctaTriggerVersion);
+  const animReal = useCountUpVersioned(resultPreview?.real || 0, 850, ctaTriggerVersion);
 
   const BTNS=[
     {l:"AC",t:"AC"},{l:"+/-",t:"fn"},{l:"%",t:"fn"},{l:"÷",t:"op"},
@@ -1228,12 +1244,12 @@ function CalcTab({dispStr,freq,presetId,showPresets,pendingOp,onPress,onFreq,onP
   };
 
   const ctaTag=resultPreview
-    ?resultPreview.nominal>=1e6?"💀 Million-dollar mistake detected"
-    :resultPreview.nominal>=1e5?"😱 Retirement damage: severe"
-    :resultPreview.nominal>=1e4?"🤕 Brace yourself..."
+    ?resultPreview.real>=1e6?"💀 Million-dollar mistake detected"
+    :resultPreview.real>=1e5?"😱 Retirement damage: severe"
+    :resultPreview.real>=1e4?"🤕 Brace yourself..."
     :"👀 You sure about this?":null;
 
-  const numFontSize=animNominal>=1e7?28:animNominal>=1e6?32:animNominal>=1e5?36:42;
+  const numFontSize=animReal>=1e7?28:animReal>=1e6?32:animReal>=1e5?36:42;
 
   return(
     <div>
@@ -1347,7 +1363,7 @@ function CalcTab({dispStr,freq,presetId,showPresets,pendingOp,onPress,onFreq,onP
                     letterSpacing:-2, lineHeight:1.1,
                     animation:"numberGlow 2.5s ease-in-out infinite",
                   }}>
-                    {usd(animNominal)}
+                    {usd(animReal)}
                   </span>
                   <span style={{fontSize:11,color:C.t2,fontWeight:500}}>
                     in {resultPreview.yrs} yrs · tap to witness the carnage
@@ -1445,7 +1461,7 @@ export default function App(){
     if(!amount||amount<=0){setResult(null);return;}
     const{nominal,real,yrs}=calcFV({amount,freq,...settings});
     if(nominal<=0){setResult(null);return;}
-    const months=Math.max(0,Math.round(nominal/settings.monthlyExpense));
+    const months=Math.max(0,Math.round(real/settings.monthlyExpense));
     const presetObj=PRESETS.find(p=>p.id===presetId)||null;
     setResult({amount,freq,nominal,real,months,yrs,presetObj});
   },[display,freq,presetId,settings]);
@@ -1465,7 +1481,7 @@ export default function App(){
       ?CHARS[~~(Math.random()*CHARS.length)]
       :(CHARS.find(c=>c.id===settings.characterId)||CHARS[0]);
     setActiveChar(ch);
-    setQuote(ch.q({amount:result.amount,fv:result.nominal,months:result.months,
+    setQuote(ch.q({amount:result.amount,fv:result.real,months:result.months,
       label:result.presetObj?.label,freq:result.freq}));
   },[result,settings]);
   useEffect(()=>{if(result?.nominal>0)reRoast();},[result?.nominal,settings.characterId,settings.randomizeAdvisor]);// eslint-disable-line
