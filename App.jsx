@@ -116,201 +116,268 @@ function loadImage(src){
 }
 
 async function generateShareImage({ nominal, real, months, yrs, amount, freq, presetObj, char, quote, settings, shareUrl }) {
-  const W = 1080, H = 1300, pad = 64;
+  // ── Canvas setup ─────────────────────────────────────────
+  // H=1360, pad=72. All Y positions are fixed so nothing overflows.
+  const W = 1080, H = 1360, pad = 72;
   const cvs = document.createElement("canvas");
   cvs.width = W; cvs.height = H;
   const ctx = cvs.getContext("2d");
 
-  // ── Helpers ──────────────────────────────────────────────
-  const fmt  = n => new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(n);
-  const fmt2 = n => new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2}).format(n);
-  const shortN = n => n>=10000?`${(n/1000).toFixed(0)}K`:n>=1000?`${(n/1000).toFixed(1)}K`:String(n);
-  const multi = amount>0 ? Math.round(nominal/amount) : 0;
-  const rawM  = nominal/settings.monthlyExpense;
-  const retM  = Math.max(1,(settings.lifeExpectancy-settings.retirementAge)*12);
-  // Pain metrics for both scales
-  const mPct    = rawM*100;
-  const mBarPct = Math.min(100,mPct);
-  const mSev    = getPainSubMonthly(mPct);
-  const rPct    = Math.min(100,(rawM/retM)*100);
-  const rSev    = getPainMultiMonth(rPct);
-  const cant    = cannotAfford(nominal);
-  // Char colour as rgb triplet for rgba()
+  // ── Coherent type scale ──────────────────────────────────
+  const T = {
+    appName:  "bold 34px Arial,Helvetica,sans-serif",
+    h2:       "bold 26px Arial,Helvetica,sans-serif",
+    bodyLg:   "22px Arial,Helvetica,sans-serif",
+    body:     "20px Arial,Helvetica,sans-serif",
+    bodyBold: "bold 20px Arial,Helvetica,sans-serif",
+    caption:  "18px Arial,Helvetica,sans-serif",
+    capBold:  "bold 17px Arial,Helvetica,sans-serif",
+    quote:    "italic 26px Arial,Helvetica,sans-serif",
+  };
+
+  // ── Colour palette ───────────────────────────────────────
+  const col = {
+    text1:"#F1F5F9", text2:"#94A3B8", text3:"#4B5563", text4:"#374151",
+    green:"#10F07A", orange:"#FB923C", gold:"#FCD34D",
+  };
+
+  // ── Derived values ───────────────────────────────────────
+  const fmtC  = n => new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(n);
+  const fmtC2 = n => new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2}).format(n);
+  const rawM  = nominal / settings.monthlyExpense;
+  const retM  = Math.max(1,(settings.lifeExpectancy - settings.retirementAge) * 12);
+  const mPct  = rawM * 100;
+  const mBar  = Math.min(100, mPct);
+  const mSev  = getPainSubMonthly(mPct);
+  const rPct  = Math.min(100,(rawM / retM) * 100);
+  const rSev  = getPainMultiMonth(rPct);
+  const cant  = cannotAfford(nominal);
+  const multi = amount > 0 ? Math.round(nominal / amount) : 0;
+  const shortN= n => n>=10000?`${(n/1000).toFixed(0)}K`:n>=1000?`${(n/1000).toFixed(1)}K`:String(n);
+  // Char colour as rgb components for rgba()
   const hx = char.col.replace("#","");
   const [cr,cg,cb] = [parseInt(hx.slice(0,2),16),parseInt(hx.slice(2,4),16),parseInt(hx.slice(4,6),16)];
+  // Accent gradient (reusable)
+  const mkAccent = () => {
+    const g = ctx.createLinearGradient(0,0,W,0);
+    g.addColorStop(0,char.col); g.addColorStop(.5,col.green); g.addColorStop(1,char.col);
+    return g;
+  };
 
-  // ── Background ───────────────────────────────────────────
-  const bgG = ctx.createLinearGradient(0,0,W,H);
+  // ── Fixed Y layout ───────────────────────────────────────
+  // All positions predetermined so layout is always consistent.
+  const Y = {
+    topBar:       0,
+    icon:         20,   // icon top
+    separator1:   108,
+    damageLabel:  136,  // "FINANCIAL DAMAGE ASSESSMENT"
+    itemName:     192,  // big item text baseline
+    subtext:      234,  // "Compounded over…"
+    becomesLabel: 276,  // "BECOMES"
+    bigNumber:    392,  // FV number baseline (nFs≤132 → cap≈92px, top≈300)
+    todayDollars: 430,
+    qBubTop:      462,  // quote bubble top (fixed height: 200px → bottom 662)
+    pmHeader:     694,  // "RETIREMENT DAMAGE" header
+    bar1Label:    726,  // monthly bar label baseline
+    bar1Top:      738,  // monthly bar rect top
+    bar2Label:    818,  // retirement bar label baseline
+    bar2Top:      830,  // retirement bar rect top
+    cantTop:      920,  // "could've had" card top (h=94 → bottom 1014)
+    qrSep:        1062, // QR separator line
+    qrLabel:      1102, // "SCAN TO RECREATE" baseline
+    qrImgTop:     1136, // QR image top (size 148 → bottom 1284)
+    watermark:    1330,
+    botBar:       1350, // bottom accent bar top
+  };
+  const Q_BUB_H = 200;  // quote bubble fixed height
+  const QR_SIZE  = 148;
+
+  // ── BACKGROUND ──────────────────────────────────────────
+  const bgG = ctx.createLinearGradient(0,0,0,H);
   bgG.addColorStop(0,"#07071A"); bgG.addColorStop(.5,"#0A0520"); bgG.addColorStop(1,"#0F0822");
-  ctx.fillStyle=bgG; ctx.fillRect(0,0,W,H);
-  // Dot grid
-  ctx.fillStyle="rgba(255,255,255,.02)";
-  for(let gx=60;gx<W;gx+=60) for(let gy=60;gy<H;gy+=60){ctx.beginPath();ctx.arc(gx,gy,1.5,0,Math.PI*2);ctx.fill();}
-
-  // ── Accent bar helper (reused top+bottom) ────────────────
-  const drawAccent=()=>{const g=ctx.createLinearGradient(0,0,W,0);g.addColorStop(0,char.col);g.addColorStop(.5,"#10F07A");g.addColorStop(1,char.col);return g;};
-  ctx.fillStyle=drawAccent(); ctx.fillRect(0,0,W,10);
-
-  // ── App icon (drawn via SVG → Image) ─────────────────────
-  const iconSvg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" rx="42" fill="#1A0A38"/><text x="96" y="120" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="100" font-weight="900" fill="#10F07A">$</text><line x1="36" y1="82" x2="156" y2="82" stroke="#FB923C" stroke-width="12" stroke-linecap="round"/></svg>`;
-  const iconUri=`data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(iconSvg)))}`;
-  try{
-    const ico=await loadImage(iconUri);
-    ctx.save(); rrect(ctx,pad,18,72,72,16); ctx.clip();
-    ctx.drawImage(ico,pad,18,72,72); ctx.restore();
-    // Subtle stroke around icon
-    ctx.strokeStyle="rgba(16,240,122,.3)"; ctx.lineWidth=1.5;
-    rrect(ctx,pad,18,72,72,16); ctx.stroke();
-  }catch{
-    ctx.fillStyle="#10F07A"; ctx.font="bold 50px Arial"; ctx.textAlign="left"; ctx.textBaseline="alphabetic";
-    ctx.fillText("$",pad+8,78);
+  ctx.fillStyle = bgG; ctx.fillRect(0,0,W,H);
+  // Subtle dot grid
+  ctx.fillStyle = "rgba(255,255,255,.018)";
+  for(let gx=72;gx<W;gx+=72) for(let gy=72;gy<H;gy+=72){
+    ctx.beginPath(); ctx.arc(gx,gy,1.5,0,Math.PI*2); ctx.fill();
   }
 
-  // App name + tagline
-  ctx.textBaseline="alphabetic";
-  ctx.fillStyle="#10F07A"; ctx.font="bold 36px Arial,Helvetica,sans-serif"; ctx.textAlign="left";
-  ctx.fillText("FRUGAL CALCULATOR",pad+88,46);
-  ctx.fillStyle="#475569"; ctx.font="21px Arial,Helvetica,sans-serif";
-  ctx.fillText("Your future self is watching. And crying.",pad+88,76);
+  // ── TOP ACCENT BAR ──────────────────────────────────────
+  ctx.fillStyle = mkAccent(); ctx.fillRect(0,0,W,10);
 
-  // Character emoji — large, right side, main personality
-  ctx.font="82px serif"; ctx.textAlign="right";
-  ctx.fillText(char.av,W-pad,96);
+  // ── HEADER: app icon + name + tagline ───────────────────
+  const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" rx="42" fill="#1A0A38"/><text x="96" y="120" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="100" font-weight="900" fill="#10F07A">$</text><line x1="36" y1="82" x2="156" y2="82" stroke="#FB923C" stroke-width="12" stroke-linecap="round"/></svg>`;
+  const iconUri = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(iconSvg)))}`;
+  try {
+    const ico = await loadImage(iconUri);
+    ctx.save(); rrect(ctx,pad,Y.icon,70,70,14); ctx.clip();
+    ctx.drawImage(ico,pad,Y.icon,70,70); ctx.restore();
+    ctx.strokeStyle="rgba(16,240,122,.2)"; ctx.lineWidth=1;
+    rrect(ctx,pad,Y.icon,70,70,14); ctx.stroke();
+  } catch { /* skip icon if load fails */ }
+  ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = col.green;  ctx.font = T.appName; ctx.textAlign = "left";
+  ctx.fillText("FRUGAL CALCULATOR", pad+84, 52);
+  ctx.fillStyle = col.text3;  ctx.font = T.body;
+  ctx.fillText("Your future self is watching. And crying.", pad+84, 78);
 
-  // ── Separator ─────────────────────────────────────────────
-  ctx.strokeStyle="rgba(255,255,255,.07)"; ctx.lineWidth=1;
-  ctx.beginPath(); ctx.moveTo(pad,108); ctx.lineTo(W-pad,108); ctx.stroke();
+  // ── SEPARATOR ───────────────────────────────────────────
+  ctx.strokeStyle = "rgba(255,255,255,.06)"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad,Y.separator1); ctx.lineTo(W-pad,Y.separator1); ctx.stroke();
 
-  // ── "Accused of" section ──────────────────────────────────
-  const fLbl={once:"ONE-TIME",daily:"DAILY",weekly:"WEEKLY",monthly:"MONTHLY",annually:"YEARLY"}[freq]||freq.toUpperCase();
-  const iLbl=(presetObj?presetObj.label:fmt2(amount)+" spend").toUpperCase();
-  ctx.fillStyle="#475569"; ctx.font="bold 21px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
-  ctx.fillText("🚨  FINANCIAL DAMAGE ASSESSMENT  🚨",W/2,148);
-  // Item name in large text — truncate if too long
-  const fullItem=`${fLbl} ${iLbl}`;
-  ctx.fillStyle="#F1F5F9"; ctx.font="bold 50px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
-  const itemMetrics=ctx.measureText(fullItem);
-  if(itemMetrics.width>W-2*pad){
-    ctx.font="bold 36px Arial,Helvetica,sans-serif";
-  }
-  ctx.fillText(fullItem,W/2,208);
-  ctx.fillStyle="#475569"; ctx.font="22px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
-  ctx.fillText(`compounded over ${yrs} years  ·  ${settings.growthRate}% annual return`,W/2,248);
+  // ── SPEND DESCRIPTION ────────────────────────────────────
+  // Section label
+  ctx.fillStyle = col.text3; ctx.font = T.capBold; ctx.textAlign = "center";
+  ctx.fillText("FINANCIAL DAMAGE ASSESSMENT", W/2, Y.damageLabel);
+  // Item name — auto-shrink until it fits
+  const fLbl = {once:"One-Time",daily:"Daily",weekly:"Weekly",monthly:"Monthly",annually:"Yearly"}[freq]||freq;
+  const iLbl = (presetObj ? presetObj.label : fmtC2(amount)+" spend").toUpperCase();
+  const fullItem = `${fLbl.toUpperCase()}  ${iLbl}`;
+  let itemFont = "bold 46px Arial,Helvetica,sans-serif";
+  ctx.font = itemFont;
+  if(ctx.measureText(fullItem).width > W-2*pad)   { itemFont = "bold 36px Arial,Helvetica,sans-serif"; ctx.font = itemFont; }
+  if(ctx.measureText(fullItem).width > W-2*pad)   { itemFont = "bold 28px Arial,Helvetica,sans-serif"; ctx.font = itemFont; }
+  ctx.fillStyle = col.text1; ctx.textAlign = "center";
+  ctx.fillText(fullItem, W/2, Y.itemName);
+  ctx.fillStyle = col.text3; ctx.font = T.bodyLg; ctx.textAlign = "center";
+  ctx.fillText(`Compounded over ${yrs} years  ·  ${settings.growthRate}% annual return`, W/2, Y.subtext);
 
-  // ── Big FV number with radial glow ────────────────────────
-  const numGlow=ctx.createRadialGradient(W/2,355,0,W/2,355,310);
-  numGlow.addColorStop(0,"rgba(16,240,122,.16)"); numGlow.addColorStop(1,"rgba(16,240,122,0)");
-  ctx.fillStyle=numGlow; ctx.fillRect(0,258,W,230);
-  ctx.fillStyle="#475569"; ctx.font="bold 24px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
-  ctx.fillText("BECOMES",W/2,292);
-  const nomStr=fmt(nominal);
-  const nFs=nomStr.length>13?86:nomStr.length>11?102:nomStr.length>9?116:130;
-  ctx.fillStyle="#10F07A"; ctx.font=`bold ${nFs}px 'Courier New',Courier,monospace`; ctx.textAlign="center";
-  ctx.fillText(nomStr,W/2,404);
-  ctx.fillStyle="#374151"; ctx.font="22px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
-  ctx.fillText(`today's dollars: ${fmt(real)}  ·  🚀 ${shortN(multi)}× your money`,W/2,440);
+  // ── BIG FV NUMBER with radial glow ───────────────────────
+  const numGlow = ctx.createRadialGradient(W/2,360,0,W/2,360,280);
+  numGlow.addColorStop(0,"rgba(16,240,122,.13)"); numGlow.addColorStop(1,"rgba(16,240,122,0)");
+  ctx.fillStyle = numGlow; ctx.fillRect(0,258,W,240);
+  ctx.fillStyle = col.text3; ctx.font = T.capBold; ctx.textAlign = "center";
+  ctx.fillText("BECOMES", W/2, Y.becomesLabel);
+  const nomStr = fmtC(nominal);
+  const nFs = nomStr.length>13?88:nomStr.length>11?104:nomStr.length>9?118:132;
+  ctx.fillStyle = col.green;
+  ctx.font = `bold ${nFs}px 'Courier New',Courier,monospace`;
+  ctx.textAlign = "center";
+  ctx.fillText(nomStr, W/2, Y.bigNumber);
+  ctx.fillStyle = col.text3; ctx.font = T.body; ctx.textAlign = "center";
+  ctx.fillText(`In today's dollars: ${fmtC(real)}`, W/2, Y.todayDollars);
 
-  // ── Character quote bubble ─────────────────────────────────
-  const qBubY=460, qBubH=185;
-  ctx.fillStyle=`rgba(${cr},${cg},${cb},0.13)`;
-  rrect(ctx,pad,qBubY,W-2*pad,qBubH,22); ctx.fill();
-  ctx.strokeStyle=char.col+"44"; ctx.lineWidth=1.5;
-  rrect(ctx,pad,qBubY,W-2*pad,qBubH,22); ctx.stroke();
-  // Character name badge top-left
-  ctx.fillStyle=char.col; ctx.font="bold 20px Arial,Helvetica,sans-serif"; ctx.textAlign="left";
-  ctx.fillText(char.name.toUpperCase(),pad+84,qBubY+26);
-  // Big character emoji
-  ctx.font="54px serif"; ctx.textAlign="left";
-  ctx.fillText(char.av,pad+16,qBubY+80);
-  // Quote text (max 3 lines)
-  const maxQ=155;
-  const qTxt=`"${quote.length>maxQ?quote.substring(0,maxQ)+"...":quote}"`;
-  ctx.fillStyle="#E2E8F0"; ctx.font="italic 27px Arial,Helvetica,sans-serif"; ctx.textAlign="left";
-  wrapText(ctx,qTxt,pad+84,qBubY+50,W-2*pad-100,42);
-  ctx.fillStyle=`rgba(${cr},${cg},${cb},0.7)`; ctx.font="bold 20px Arial,Helvetica,sans-serif"; ctx.textAlign="right";
-  ctx.fillText("— "+char.name,W-pad-16,qBubY+qBubH-16);
+  // ── CHARACTER QUOTE BUBBLE ────────────────────────────────
+  // Layout inside bubble:
+  //   internal pad = 22px all sides
+  //   emoji (50px) at left, vertically centred on first 2 text lines
+  //   name badge above quote text
+  //   attribution bottom-right
+  const QP    = 22;   // internal bubble padding
+  const EMOJI_W = 66; // horizontal space for the emoji column
+  const textX = pad + QP + EMOJI_W;       // where quote text starts
+  const textW = W - pad - textX - QP;     // available width for text
+  const maxQ  = 115;  // chars — guarantees ≤2 lines at 26px italic on textW
+  const qTxt  = `"${quote.length>maxQ?quote.substring(0,maxQ)+"...":quote}"`;
 
-  // ── Both pain meters ──────────────────────────────────────
-  const pmY=672;
-  ctx.fillStyle="#94A3B8"; ctx.font="bold 24px Arial,Helvetica,sans-serif"; ctx.textAlign="left";
-  ctx.fillText("💥  THE DAMAGE BREAKDOWN",pad,pmY);
+  ctx.fillStyle = `rgba(${cr},${cg},${cb},0.12)`;
+  rrect(ctx,pad,Y.qBubTop,W-2*pad,Q_BUB_H,20); ctx.fill();
+  ctx.strokeStyle = char.col+"38"; ctx.lineWidth=1;
+  rrect(ctx,pad,Y.qBubTop,W-2*pad,Q_BUB_H,20); ctx.stroke();
+
+  // Name badge (top-left of text column)
+  ctx.fillStyle = char.col; ctx.font = T.capBold; ctx.textAlign = "left";
+  ctx.fillText(char.name.toUpperCase(), textX, Y.qBubTop+QP+16);
+
+  // Emoji (vertically centred in left column)
+  ctx.font = "52px serif"; ctx.textAlign = "left";
+  ctx.fillText(char.av, pad+QP, Y.qBubTop+QP+78);
+
+  // Quote text (starts below name badge, strictly inside bubble)
+  ctx.fillStyle = "#E2E8F0"; ctx.font = T.quote; ctx.textAlign = "left";
+  wrapText(ctx, qTxt, textX, Y.qBubTop+QP+46, textW, 38);
+
+  // Attribution (bottom-right, inside bubble)
+  ctx.fillStyle = `rgba(${cr},${cg},${cb},0.85)`;
+  ctx.font = T.capBold; ctx.textAlign = "right";
+  ctx.fillText("— "+char.name, W-pad-QP, Y.qBubTop+Q_BUB_H-QP);
+
+  // ── PAIN METERS (both) ────────────────────────────────────
+  // Section header
+  ctx.fillStyle = col.text2; ctx.font = T.h2; ctx.textAlign = "left";
+  ctx.fillText("RETIREMENT DAMAGE", pad, Y.pmHeader);
+
+  // Helper: draws one bar + combined severity+detail below it
+  const drawBar = (labelY, barTopY, label, barPct, detailLeft, detailRight, sevColor) => {
+    const BW = W-2*pad, BH = 12;
+    // Label
+    ctx.fillStyle = col.text2; ctx.font = T.body; ctx.textAlign = "left";
+    ctx.fillText(label, pad, labelY);
+    // Track
+    ctx.fillStyle = "rgba(255,255,255,.10)"; rrect(ctx,pad,barTopY,BW,BH,6); ctx.fill();
+    // Fill
+    const fillW = Math.max(BH, BW * Math.min(100,barPct)/100);
+    const bG = ctx.createLinearGradient(pad,0,pad+fillW,0);
+    bG.addColorStop(0,col.green); bG.addColorStop(1,sevColor);
+    ctx.fillStyle = bG; rrect(ctx,pad,barTopY,fillW,BH,6); ctx.fill();
+    // Detail line below bar — left side is stat, right side is severity label
+    const detY = barTopY + BH + 20;
+    ctx.fillStyle = sevColor;
+    // Left stat
+    ctx.font = T.caption; ctx.textAlign = "left";
+    ctx.fillText(detailLeft, pad, detY);
+    // Right severity — truncate if too wide to avoid overflow
+    ctx.textAlign = "right";
+    let sev = detailRight;
+    while(ctx.font=T.caption, ctx.measureText(sev).width > W-2*pad-ctx.measureText(detailLeft).width-32 && sev.length>4)
+      sev = sev.slice(0,-2)+"…";
+    ctx.fillText(sev, W-pad, detY);
+  };
 
   // Monthly bar
-  const bw=W-2*pad, bh=14, br=7;
-  const m1LblY=pmY+32; const m1BarY=m1LblY+10;
-  ctx.fillStyle="#94A3B8"; ctx.font="21px Arial,Helvetica,sans-serif"; ctx.textAlign="left";
-  ctx.fillText("💳  vs Monthly Budget",pad,m1LblY);
-  ctx.fillStyle=mSev.col; ctx.font="bold 20px Arial,Helvetica,sans-serif"; ctx.textAlign="right";
-  ctx.fillText(mSev.lbl,W-pad,m1LblY);
-  ctx.fillStyle="rgba(255,255,255,.12)"; rrect(ctx,pad,m1BarY,bw,bh,br); ctx.fill();
-  const m1f=Math.max(bh,(bw*mBarPct/100)); const m1G=ctx.createLinearGradient(pad,0,pad+m1f,0);
-  m1G.addColorStop(0,"#10F07A"); m1G.addColorStop(1,mSev.col); ctx.fillStyle=m1G;
-  rrect(ctx,pad,m1BarY,m1f,bh,br); ctx.fill();
-  ctx.fillStyle="#475569"; ctx.font="18px Arial,Helvetica,sans-serif"; ctx.textAlign="left";
-  ctx.fillText(mPct>=100?`${rawM.toFixed(1)}× monthly budget`:`${Math.round(mPct)}% of one monthly budget`,pad,m1BarY+30);
+  const mStatLeft  = mPct>=100 ? `${rawM.toFixed(1)}× monthly budget` : `${Math.round(mPct)}% of monthly budget`;
+  drawBar(Y.bar1Label, Y.bar1Top, "💳  vs Monthly Budget", mBar, mStatLeft, mSev.lbl, mSev.col);
 
   // Retirement bar
-  const m2LblY=pmY+110; const m2BarY=m2LblY+10;
-  ctx.fillStyle="#94A3B8"; ctx.font="21px Arial,Helvetica,sans-serif"; ctx.textAlign="left";
-  ctx.fillText("⚰️  vs Total Retirement",pad,m2LblY);
-  ctx.fillStyle=rSev.col; ctx.font="bold 20px Arial,Helvetica,sans-serif"; ctx.textAlign="right";
-  ctx.fillText(rSev.lbl,W-pad,m2LblY);
-  ctx.fillStyle="rgba(255,255,255,.12)"; rrect(ctx,pad,m2BarY,bw,bh,br); ctx.fill();
-  const m2f=Math.max(bh,(bw*rPct/100)); const m2G=ctx.createLinearGradient(pad,0,pad+m2f,0);
-  m2G.addColorStop(0,"#10F07A"); m2G.addColorStop(1,rSev.col); ctx.fillStyle=m2G;
-  rrect(ctx,pad,m2BarY,m2f,bh,br); ctx.fill();
-  ctx.fillStyle="#475569"; ctx.font="18px Arial,Helvetica,sans-serif"; ctx.textAlign="left";
-  ctx.fillText(`${Math.round(rawM)} of ${retM} retirement months  (${Math.round(rPct)}%)`,pad,m2BarY+30);
+  const rStatLeft  = `${Math.round(rawM)} of ${retM} retirement months (${Math.round(rPct)}%)`;
+  drawBar(Y.bar2Label, Y.bar2Top, "⚰️  vs Retirement Span", rPct, rStatLeft, rSev.lbl, rSev.col);
 
-  // ── "Could've had" card ───────────────────────────────────
-  const cY=858, cH=94;
-  ctx.fillStyle="rgba(252,211,77,.1)"; rrect(ctx,pad,cY,bw,cH,20); ctx.fill();
-  ctx.strokeStyle="rgba(252,211,77,.3)"; ctx.lineWidth=1.5; rrect(ctx,pad,cY,bw,cH,20); ctx.stroke();
-  ctx.fillStyle="#FCD34D"; ctx.font="bold 22px Arial,Helvetica,sans-serif"; ctx.textAlign="left";
-  ctx.fillText("💎  THIS COULD'VE BEEN YOURS:",pad+20,cY+32);
-  ctx.fillStyle="#FEF3C7"; ctx.font="bold 40px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
-  // Truncate if needed
-  ctx.font="bold 40px Arial,Helvetica,sans-serif";
-  const cantUp=cant.toUpperCase();
-  if(ctx.measureText(cantUp).width>bw-40){ctx.font="bold 30px Arial,Helvetica,sans-serif";}
-  ctx.fillText(cantUp,W/2,cY+76);
+  // ── "COULD'VE HAD" ────────────────────────────────────────
+  const CANT_H = 94;
+  ctx.fillStyle = "rgba(252,211,77,.08)";
+  rrect(ctx,pad,Y.cantTop,W-2*pad,CANT_H,18); ctx.fill();
+  ctx.strokeStyle = "rgba(252,211,77,.20)"; ctx.lineWidth=1;
+  rrect(ctx,pad,Y.cantTop,W-2*pad,CANT_H,18); ctx.stroke();
+  ctx.fillStyle = col.gold; ctx.font = T.capBold; ctx.textAlign = "left";
+  ctx.fillText("THIS COULD'VE BEEN YOURS  💎", pad+20, Y.cantTop+28);
+  const cantStr = cant.toUpperCase();
+  ctx.textAlign = "center";
+  let cantFont = "bold 38px Arial,Helvetica,sans-serif";
+  ctx.font = cantFont;
+  if(ctx.measureText(cantStr).width > W-2*pad-48){ cantFont="bold 28px Arial,Helvetica,sans-serif"; ctx.font=cantFont; }
+  ctx.fillStyle = "#FEF3C7";
+  ctx.fillText(cantStr, W/2, Y.cantTop+72);
 
-  // ── Stat pills row ────────────────────────────────────────
-  const sw=(bw-20)/2, spY=976, spH=78;
-  const dM=rawM<1?rawM.toFixed(2):Math.round(rawM).toString();
-  // Growth pill
-  ctx.fillStyle="rgba(16,240,122,.09)"; rrect(ctx,pad,spY,sw,spH,18); ctx.fill();
-  ctx.strokeStyle="rgba(16,240,122,.22)"; ctx.lineWidth=1.5; rrect(ctx,pad,spY,sw,spH,18); ctx.stroke();
-  ctx.fillStyle="#10F07A"; ctx.font="bold 34px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
-  ctx.fillText(`🚀 ${shortN(multi)}× growth`,pad+sw/2,spY+49);
-  // Months pill
-  ctx.fillStyle="rgba(251,146,60,.09)"; rrect(ctx,pad+sw+20,spY,sw,spH,18); ctx.fill();
-  ctx.strokeStyle="rgba(251,146,60,.22)"; ctx.lineWidth=1.5; rrect(ctx,pad+sw+20,spY,sw,spH,18); ctx.stroke();
-  ctx.fillStyle="#FB923C"; ctx.font="bold 34px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
-  ctx.fillText(`⏳ ${dM} months stolen`,pad+sw+20+sw/2,spY+49);
+  // ── QR CODE SECTION ──────────────────────────────────────
+  // Separator
+  ctx.strokeStyle = "rgba(255,255,255,.06)"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad,Y.qrSep); ctx.lineTo(W-pad,Y.qrSep); ctx.stroke();
 
-  // ── QR code ───────────────────────────────────────────────
-  ctx.strokeStyle="rgba(255,255,255,.07)"; ctx.lineWidth=1;
-  ctx.beginPath(); ctx.moveTo(pad,1080); ctx.lineTo(W-pad,1080); ctx.stroke();
-  ctx.fillStyle="#475569"; ctx.font="bold 20px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
-  ctx.fillText("📲  SCAN TO RECREATE THIS SCENARIO",W/2,1108);
+  // Label above QR — generous gap from separator
+  ctx.fillStyle = col.text3; ctx.font = T.capBold; ctx.textAlign = "center";
+  ctx.fillText("SCAN TO RECREATE THIS SCENARIO", W/2, Y.qrLabel);
+
   if(shareUrl){
-    const qrApi=`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(shareUrl)}&format=png`;
+    const qrApi = `https://api.qrserver.com/v1/create-qr-code/?size=${QR_SIZE}x${QR_SIZE}&data=${encodeURIComponent(shareUrl)}&format=png`;
     try{
-      const qrImg=await loadImage(qrApi);
-      const qrS=140, qrX=(W-qrS)/2, qrY=1122;
-      ctx.fillStyle="#F8FAFC"; rrect(ctx,qrX-10,qrY-10,qrS+20,qrS+20,12); ctx.fill();
-      ctx.drawImage(qrImg,qrX,qrY,qrS,qrS);
+      const qrImg = await loadImage(qrApi);
+      const qrX = (W-QR_SIZE)/2;
+      // White background with generous padding — no touching the edges
+      ctx.fillStyle = "#F8FAFC";
+      rrect(ctx, qrX-14, Y.qrImgTop-14, QR_SIZE+28, QR_SIZE+28, 14); ctx.fill();
+      ctx.drawImage(qrImg, qrX, Y.qrImgTop, QR_SIZE, QR_SIZE);
     }catch{
-      ctx.fillStyle="#334155"; ctx.font="18px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
-      ctx.fillText((shareUrl||"").substring(0,56)+((shareUrl||"").length>56?"...":""),W/2,1180);
+      ctx.fillStyle = col.text4; ctx.font = T.caption; ctx.textAlign = "center";
+      ctx.fillText("frugalcalculator.app", W/2, Y.qrImgTop+60);
     }
   }
 
-  // ── Footer watermark + bottom accent ─────────────────────
-  ctx.fillStyle="#1E293B"; ctx.font="18px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
-  ctx.fillText("frugalcalculator.app  \u00b7  Your future self says: stop spending.",W/2,1284);
-  ctx.fillStyle=drawAccent(); ctx.fillRect(0,H-10,W,10);
+  // Watermark — sits well below QR (Y.watermark = 1330, QR bottom = 1284+14 = 1298)
+  ctx.fillStyle = col.text4; ctx.font = T.caption; ctx.textAlign = "center";
+  ctx.fillText("frugalcalculator.app  ·  Your future self says: stop spending.", W/2, Y.watermark);
+
+  // ── BOTTOM ACCENT BAR ─────────────────────────────────────
+  ctx.fillStyle = mkAccent(); ctx.fillRect(0, Y.botBar, W, 10);
 
   return cvs.toDataURL("image/png");
 }
