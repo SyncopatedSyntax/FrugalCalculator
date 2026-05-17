@@ -116,268 +116,205 @@ function loadImage(src){
 }
 
 async function generateShareImage({ nominal, real, months, yrs, amount, freq, presetObj, char, quote, settings, shareUrl }) {
-  // ── Canvas setup ─────────────────────────────────────────
-  // H=1360, pad=72. All Y positions are fixed so nothing overflows.
-  const W = 1080, H = 1360, pad = 72;
-  const cvs = document.createElement("canvas");
-  cvs.width = W; cvs.height = H;
-  const ctx = cvs.getContext("2d");
-
-  // ── Coherent type scale ──────────────────────────────────
-  const T = {
-    appName:  "bold 34px Arial,Helvetica,sans-serif",
-    h2:       "bold 26px Arial,Helvetica,sans-serif",
-    bodyLg:   "22px Arial,Helvetica,sans-serif",
-    body:     "20px Arial,Helvetica,sans-serif",
-    bodyBold: "bold 20px Arial,Helvetica,sans-serif",
-    caption:  "18px Arial,Helvetica,sans-serif",
-    capBold:  "bold 17px Arial,Helvetica,sans-serif",
-    quote:    "italic 26px Arial,Helvetica,sans-serif",
-  };
-
-  // ── Colour palette ───────────────────────────────────────
-  const col = {
-    text1:"#F1F5F9", text2:"#94A3B8", text3:"#4B5563", text4:"#374151",
-    green:"#10F07A", orange:"#FB923C", gold:"#FCD34D",
-  };
-
-  // ── Derived values ───────────────────────────────────────
+  // Layout mirrors the ResultsPanel; H is generous so dynamic quote height always fits.
+  const W = 1080, pad = 48;
   const fmtC  = n => new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(n);
   const fmtC2 = n => new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2}).format(n);
+
+  // Pain metrics (same as ResultsPanel, using real throughout)
   const rawM  = real / settings.monthlyExpense;
   const retM  = Math.max(1,(settings.lifeExpectancy - settings.retirementAge) * 12);
   const mPct  = rawM * 100;
-  const mBar  = Math.min(100, mPct);
   const mSev  = getPainSubMonthly(mPct);
   const rPct  = Math.min(100,(rawM / retM) * 100);
   const rSev  = getPainMultiMonth(rPct);
   const cant  = cannotAfford(real);
   const multi = amount > 0 ? Math.round(real / amount) : 0;
-  const shortN= n => n>=10000?`${(n/1000).toFixed(0)}K`:n>=1000?`${(n/1000).toFixed(1)}K`:String(n);
-  // Char colour as rgb components for rgba()
-  const hx = char.col.replace("#","");
+  const shortMul = n => n>=10000?`${(n/1000).toFixed(0)}K×`:n>=1000?`${(n/1000).toFixed(1)}K×`:`${n}×`;
+  const hx    = char.col.replace("#","");
   const [cr,cg,cb] = [parseInt(hx.slice(0,2),16),parseInt(hx.slice(2,4),16),parseInt(hx.slice(4,6),16)];
-  // Accent gradient (reusable)
-  const mkAccent = () => {
+  const mkAcc = ctx => {
     const g = ctx.createLinearGradient(0,0,W,0);
-    g.addColorStop(0,char.col); g.addColorStop(.5,col.green); g.addColorStop(1,char.col);
+    g.addColorStop(0,char.col); g.addColorStop(.5,"#10F07A"); g.addColorStop(1,char.col);
     return g;
   };
 
-  // ── Fixed Y layout ───────────────────────────────────────
-  // All positions predetermined so layout is always consistent.
-  const Y = {
-    topBar:       0,
-    icon:         20,   // icon top
-    separator1:   108,
-    damageLabel:  136,  // "FINANCIAL DAMAGE ASSESSMENT"
-    itemName:     192,  // big item text baseline
-    subtext:      234,  // "Compounded over…"
-    becomesLabel: 276,  // "BECOMES"
-    bigNumber:    392,  // FV number baseline (nFs≤132 → cap≈92px, top≈300)
-    todayDollars: 430,
-    qBubTop:      462,  // quote bubble top (fixed height: 200px → bottom 662)
-    pmHeader:     694,  // "RETIREMENT DAMAGE" header
-    bar1Label:    726,  // monthly bar label baseline
-    bar1Top:      738,  // monthly bar rect top
-    bar2Label:    818,  // retirement bar label baseline
-    bar2Top:      830,  // retirement bar rect top
-    cantTop:      920,  // "could've had" card top (h=94 → bottom 1014)
-    qrSep:        1062, // QR separator line
-    qrLabel:      1102, // "SCAN TO RECREATE" baseline
-    qrImgTop:     1136, // QR image top (size 148 → bottom 1284)
-    watermark:    1330,
-    botBar:       1350, // bottom accent bar top
-  };
-  const Q_BUB_H = 200;  // quote bubble fixed height
-  const QR_SIZE  = 148;
+  // ── Pre-measure quote to determine canvas height ─────────
+  // Create a temporary canvas just for measurement
+  const tmp = document.createElement("canvas"); tmp.width=W; tmp.height=10;
+  const tctx = tmp.getContext("2d");
+  const qPad=18, qEmojiW=60;
+  const qTextX = pad+qPad+qEmojiW, qTextW = W-pad-qTextX-qPad;
+  const maxQ = 115;
+  const qTxt = `"${quote.length>maxQ?quote.substring(0,maxQ)+"...":quote}"`;
+  tctx.font = "italic 25px Arial,Helvetica,sans-serif";
+  const qWords = qTxt.split(" "); let qLine = ""; let qLineCount = 0;
+  for(const w of qWords){
+    const test = qLine+w+" ";
+    if(tctx.measureText(test).width > qTextW && qLine){ qLineCount++; qLine=w+" "; }
+    else qLine = test;
+  }
+  qLineCount++;
+  const qBubH = qPad + 22 + 10 + qLineCount*38 + 20 + qPad;  // top+name+gap+text+gap+bottom
 
-  // ── BACKGROUND ──────────────────────────────────────────
+  // ── Fixed layout from quote bubble downward ───────────────
+  const qBubY    = 110;
+  const numSecY  = qBubY + qBubH + 16;       // big number section top
+  const realStr  = fmtC(real);
+  const nFs      = realStr.length>13?38:realStr.length>11?46:realStr.length>9?54:64;
+  const numBase  = numSecY + 30 + nFs;        // big number baseline
+  const nomY     = numBase + 14;              // nominal pill top
+  const statsY   = nomY + 56 + 16;           // stats grid top
+  const cantY    = statsY + 92 + 14;         // could've had top
+  const pmY      = cantY + 94 + 16;          // pain meters top
+  const qrSepY   = pmY + 160;                // QR separator (2 bars × ~80px each)
+  const qrImgY   = qrSepY + 50;             // QR image top
+  const QR_SIZE  = 130;
+  const H        = qrImgY + QR_SIZE + 80;    // canvas height
+
+  const cvs = document.createElement("canvas");
+  cvs.width = W; cvs.height = H;
+  const ctx = cvs.getContext("2d");
+
+  // ── Background ───────────────────────────────────────────
   const bgG = ctx.createLinearGradient(0,0,0,H);
-  bgG.addColorStop(0,"#07071A"); bgG.addColorStop(.5,"#0A0520"); bgG.addColorStop(1,"#0F0822");
+  bgG.addColorStop(0,"#07071A"); bgG.addColorStop(1,"#100A2A");
   ctx.fillStyle = bgG; ctx.fillRect(0,0,W,H);
-  // Subtle dot grid
   ctx.fillStyle = "rgba(255,255,255,.018)";
-  for(let gx=72;gx<W;gx+=72) for(let gy=72;gy<H;gy+=72){
+  for(let gx=60;gx<W;gx+=60) for(let gy=60;gy<H;gy+=60){
     ctx.beginPath(); ctx.arc(gx,gy,1.5,0,Math.PI*2); ctx.fill();
   }
 
-  // ── TOP ACCENT BAR ──────────────────────────────────────
-  ctx.fillStyle = mkAccent(); ctx.fillRect(0,0,W,10);
+  // ── Top accent ───────────────────────────────────────────
+  ctx.fillStyle = mkAcc(ctx); ctx.fillRect(0,0,W,10);
 
-  // ── HEADER: app icon + name + tagline ───────────────────
+  // ── Header: icon + app name ──────────────────────────────
   const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" rx="42" fill="#1A0A38"/><text x="96" y="120" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="100" font-weight="900" fill="#10F07A">$</text><line x1="36" y1="82" x2="156" y2="82" stroke="#FB923C" stroke-width="12" stroke-linecap="round"/></svg>`;
   const iconUri = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(iconSvg)))}`;
-  try {
+  try{
     const ico = await loadImage(iconUri);
-    ctx.save(); rrect(ctx,pad,Y.icon,70,70,14); ctx.clip();
-    ctx.drawImage(ico,pad,Y.icon,70,70); ctx.restore();
+    ctx.save(); rrect(ctx,pad,18,64,64,14); ctx.clip();
+    ctx.drawImage(ico,pad,18,64,64); ctx.restore();
     ctx.strokeStyle="rgba(16,240,122,.2)"; ctx.lineWidth=1;
-    rrect(ctx,pad,Y.icon,70,70,14); ctx.stroke();
-  } catch { /* skip icon if load fails */ }
+    rrect(ctx,pad,18,64,64,14); ctx.stroke();
+  }catch{}
   ctx.textBaseline = "alphabetic";
-  ctx.fillStyle = col.green;  ctx.font = T.appName; ctx.textAlign = "left";
-  ctx.fillText("FRUGAL CALCULATOR", pad+84, 52);
-  ctx.fillStyle = col.text3;  ctx.font = T.body;
-  ctx.fillText("Your future self is watching. And crying.", pad+84, 78);
+  ctx.fillStyle="#10F07A"; ctx.font="bold 30px Arial,Helvetica,sans-serif"; ctx.textAlign="left";
+  ctx.fillText("💸 Frugal Calculator", pad+76, 48);
+  ctx.fillStyle="#4B5563"; ctx.font="18px Arial,Helvetica,sans-serif";
+  ctx.fillText("Retirement Impact", pad+76, 74);
+  ctx.strokeStyle="rgba(255,255,255,.07)"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(pad,96); ctx.lineTo(W-pad,96); ctx.stroke();
 
-  // ── SEPARATOR ───────────────────────────────────────────
-  ctx.strokeStyle = "rgba(255,255,255,.06)"; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(pad,Y.separator1); ctx.lineTo(W-pad,Y.separator1); ctx.stroke();
+  // ── Quote bubble ─────────────────────────────────────────
+  ctx.fillStyle = `rgba(${cr},${cg},${cb},0.13)`;
+  rrect(ctx,pad,qBubY,W-2*pad,qBubH,20); ctx.fill();
+  ctx.strokeStyle = char.col+"40"; ctx.lineWidth = 1.5;
+  rrect(ctx,pad,qBubY,W-2*pad,qBubH,20); ctx.stroke();
+  // Character name
+  ctx.fillStyle=char.col; ctx.font="bold 18px Arial,Helvetica,sans-serif"; ctx.textAlign="left";
+  ctx.fillText(char.name.toUpperCase(), qTextX, qBubY+qPad+16);
+  // Emoji
+  ctx.font="50px serif"; ctx.textAlign="left";
+  ctx.fillText(char.av, pad+qPad, qBubY+qPad+62);
+  // Quote text
+  ctx.fillStyle="#E2E8F0"; ctx.font="italic 25px Arial,Helvetica,sans-serif"; ctx.textAlign="left";
+  wrapText(ctx, qTxt, qTextX, qBubY+qPad+22+10+24, qTextW, 38);
+  // Attribution
+  ctx.fillStyle=`rgba(${cr},${cg},${cb},0.8)`; ctx.font="bold 16px Arial,Helvetica,sans-serif"; ctx.textAlign="right";
+  ctx.fillText("— "+char.name, W-pad-qPad, qBubY+qBubH-qPad);
 
-  // ── SPEND DESCRIPTION ────────────────────────────────────
-  // Section label
-  ctx.fillStyle = col.text3; ctx.font = T.capBold; ctx.textAlign = "center";
-  ctx.fillText("FINANCIAL DAMAGE ASSESSMENT", W/2, Y.damageLabel);
-  // Item name — auto-shrink until it fits
-  const fLbl = {once:"One-Time",daily:"Daily",weekly:"Weekly",monthly:"Monthly",annually:"Yearly"}[freq]||freq;
-  const iLbl = (presetObj ? presetObj.label : fmtC2(amount)+" spend").toUpperCase();
-  const fullItem = `${fLbl.toUpperCase()}  ${iLbl}`;
-  let itemFont = "bold 46px Arial,Helvetica,sans-serif";
-  ctx.font = itemFont;
-  if(ctx.measureText(fullItem).width > W-2*pad)   { itemFont = "bold 36px Arial,Helvetica,sans-serif"; ctx.font = itemFont; }
-  if(ctx.measureText(fullItem).width > W-2*pad)   { itemFont = "bold 28px Arial,Helvetica,sans-serif"; ctx.font = itemFont; }
-  ctx.fillStyle = col.text1; ctx.textAlign = "center";
-  ctx.fillText(fullItem, W/2, Y.itemName);
-  ctx.fillStyle = col.text3; ctx.font = T.bodyLg; ctx.textAlign = "center";
-  ctx.fillText(`Compounded over ${yrs} years  ·  ${settings.growthRate}% annual return`, W/2, Y.subtext);
+  // ── Big real number ───────────────────────────────────────
+  const numGlow = ctx.createRadialGradient(W/2,numSecY+80,0,W/2,numSecY+80,240);
+  numGlow.addColorStop(0,"rgba(16,240,122,.12)"); numGlow.addColorStop(1,"rgba(16,240,122,0)");
+  ctx.fillStyle = numGlow; ctx.fillRect(0,numSecY,W,200);
+  ctx.fillStyle="#4B5563"; ctx.font="15px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
+  ctx.fillText(`Inflation-adjusted value · ${yrs} years`, W/2, numSecY+20);
+  ctx.fillStyle="#10F07A"; ctx.font=`bold ${nFs}px 'Courier New',Courier,monospace`; ctx.textAlign="center";
+  ctx.fillText(realStr, W/2, numBase);
 
-  // ── BIG FV NUMBER with radial glow ───────────────────────
-  const numGlow = ctx.createRadialGradient(W/2,360,0,W/2,360,280);
-  numGlow.addColorStop(0,"rgba(16,240,122,.13)"); numGlow.addColorStop(1,"rgba(16,240,122,0)");
-  ctx.fillStyle = numGlow; ctx.fillRect(0,258,W,240);
-  ctx.fillStyle = col.text3; ctx.font = T.capBold; ctx.textAlign = "center";
-  ctx.fillText("BECOMES (INFLATION-ADJUSTED)", W/2, Y.becomesLabel);
-  const nomStr = fmtC(real);
-  const nFs = nomStr.length>13?88:nomStr.length>11?104:nomStr.length>9?118:132;
-  ctx.fillStyle = col.green;
-  ctx.font = `bold ${nFs}px 'Courier New',Courier,monospace`;
-  ctx.textAlign = "center";
-  ctx.fillText(nomStr, W/2, Y.bigNumber);
-  ctx.fillStyle = col.text3; ctx.font = T.body; ctx.textAlign = "center";
-  ctx.fillText(`Inflation-adjusted  ·  nominal: ${fmtC(nominal)}`, W/2, Y.todayDollars);
+  // ── Nominal pill ─────────────────────────────────────────
+  const nomW=310, nomX=(W-nomW)/2;
+  ctx.fillStyle="rgba(107,79,157,.18)"; rrect(ctx,nomX,nomY,nomW,52,10); ctx.fill();
+  ctx.strokeStyle="rgba(167,139,250,.18)"; ctx.lineWidth=1; rrect(ctx,nomX,nomY,nomW,52,10); ctx.stroke();
+  ctx.fillStyle="#9370CC"; ctx.font="9px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
+  ctx.fillText("nominal · before inflation", W/2, nomY+15);
+  const nomFs = fmtC(nominal).length>10?20:24;
+  ctx.fillStyle="#B89EE8"; ctx.font=`bold ${nomFs}px 'Courier New',Courier,monospace`; ctx.textAlign="center";
+  ctx.fillText(fmtC(nominal), W/2, nomY+42);
 
-  // ── CHARACTER QUOTE BUBBLE ────────────────────────────────
-  // Layout inside bubble:
-  //   internal pad = 22px all sides
-  //   emoji (50px) at left, vertically centred on first 2 text lines
-  //   name badge above quote text
-  //   attribution bottom-right
-  const QP    = 22;   // internal bubble padding
-  const EMOJI_W = 66; // horizontal space for the emoji column
-  const textX = pad + QP + EMOJI_W;       // where quote text starts
-  const textW = W - pad - textX - QP;     // available width for text
-  const maxQ  = 115;  // chars — guarantees ≤2 lines at 26px italic on textW
-  const qTxt  = `"${quote.length>maxQ?quote.substring(0,maxQ)+"...":quote}"`;
+  // ── Stats grid ────────────────────────────────────────────
+  const sw=(W-2*pad-16)/2, sH=92;
+  // Months stolen
+  ctx.fillStyle="rgba(251,146,60,.09)"; rrect(ctx,pad,statsY,sw,sH,16); ctx.fill();
+  ctx.strokeStyle="rgba(251,146,60,.22)"; ctx.lineWidth=1.5; rrect(ctx,pad,statsY,sw,sH,16); ctx.stroke();
+  const dM = rawM<1?rawM.toFixed(2):Math.round(rawM).toString();
+  ctx.fillStyle="#FB923C"; ctx.font="bold 32px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
+  ctx.fillText(dM, pad+sw/2, statsY+48);
+  ctx.font="13px Arial,Helvetica,sans-serif"; ctx.fillText("MONTHS STOLEN", pad+sw/2, statsY+66);
+  ctx.fillStyle="#94A3B8"; ctx.font="11px Arial,Helvetica,sans-serif"; ctx.fillText("of retirement", pad+sw/2, statsY+82);
+  // Growth multiplier
+  ctx.fillStyle="rgba(16,240,122,.07)"; rrect(ctx,pad+sw+16,statsY,sw,sH,16); ctx.fill();
+  ctx.strokeStyle="rgba(16,240,122,.22)"; ctx.lineWidth=1.5; rrect(ctx,pad+sw+16,statsY,sw,sH,16); ctx.stroke();
+  ctx.fillStyle="#10F07A"; ctx.font="bold 32px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
+  ctx.fillText(shortMul(multi), pad+sw+16+sw/2, statsY+48);
+  ctx.font="13px Arial,Helvetica,sans-serif"; ctx.fillText("GROWTH", pad+sw+16+sw/2, statsY+66);
+  ctx.fillStyle="#94A3B8"; ctx.font="11px Arial,Helvetica,sans-serif"; ctx.fillText("if invested now", pad+sw+16+sw/2, statsY+82);
 
-  ctx.fillStyle = `rgba(${cr},${cg},${cb},0.12)`;
-  rrect(ctx,pad,Y.qBubTop,W-2*pad,Q_BUB_H,20); ctx.fill();
-  ctx.strokeStyle = char.col+"38"; ctx.lineWidth=1;
-  rrect(ctx,pad,Y.qBubTop,W-2*pad,Q_BUB_H,20); ctx.stroke();
+  // ── Could've had ─────────────────────────────────────────
+  ctx.fillStyle="rgba(252,211,77,.07)"; rrect(ctx,pad,cantY,W-2*pad,90,16); ctx.fill();
+  ctx.strokeStyle="rgba(252,211,77,.18)"; ctx.lineWidth=1; rrect(ctx,pad,cantY,W-2*pad,90,16); ctx.stroke();
+  ctx.fillStyle="#FCD34D"; ctx.font="bold 16px Arial,Helvetica,sans-serif"; ctx.textAlign="left";
+  ctx.fillText("💎 WHAT YOU COULD'VE HAD", pad+18, cantY+26);
+  const cantStr = cant.charAt(0).toUpperCase()+cant.slice(1);
+  ctx.font="bold 28px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
+  if(ctx.measureText(cantStr).width > W-2*pad-36){ ctx.font="bold 21px Arial,Helvetica,sans-serif"; }
+  ctx.fillStyle="#FEF3C7"; ctx.fillText(cantStr, W/2, cantY+68);
 
-  // Name badge (top-left of text column)
-  ctx.fillStyle = char.col; ctx.font = T.capBold; ctx.textAlign = "left";
-  ctx.fillText(char.name.toUpperCase(), textX, Y.qBubTop+QP+16);
-
-  // Emoji (vertically centred in left column)
-  ctx.font = "52px serif"; ctx.textAlign = "left";
-  ctx.fillText(char.av, pad+QP, Y.qBubTop+QP+78);
-
-  // Quote text (starts below name badge, strictly inside bubble)
-  ctx.fillStyle = "#E2E8F0"; ctx.font = T.quote; ctx.textAlign = "left";
-  wrapText(ctx, qTxt, textX, Y.qBubTop+QP+46, textW, 38);
-
-  // Attribution (bottom-right, inside bubble)
-  ctx.fillStyle = `rgba(${cr},${cg},${cb},0.85)`;
-  ctx.font = T.capBold; ctx.textAlign = "right";
-  ctx.fillText("— "+char.name, W-pad-QP, Y.qBubTop+Q_BUB_H-QP);
-
-  // ── PAIN METERS (both) ────────────────────────────────────
-  // Section header
-  ctx.fillStyle = col.text2; ctx.font = T.h2; ctx.textAlign = "left";
-  ctx.fillText("RETIREMENT DAMAGE", pad, Y.pmHeader);
-
-  // Helper: draws one bar + combined severity+detail below it
-  const drawBar = (labelY, barTopY, label, barPct, detailLeft, detailRight, sevColor) => {
-    const BW = W-2*pad, BH = 12;
-    // Label
-    ctx.fillStyle = col.text2; ctx.font = T.body; ctx.textAlign = "left";
+  // ── Pain meters ───────────────────────────────────────────
+  const BW=W-2*pad, BH=10;
+  const drawBar=(labelY,label,pct,sev,statLeft,statRight)=>{
+    ctx.fillStyle="#94A3B8"; ctx.font="17px Arial,Helvetica,sans-serif"; ctx.textAlign="left";
     ctx.fillText(label, pad, labelY);
-    // Track
-    ctx.fillStyle = "rgba(255,255,255,.10)"; rrect(ctx,pad,barTopY,BW,BH,6); ctx.fill();
-    // Fill
-    const fillW = Math.max(BH, BW * Math.min(100,barPct)/100);
-    const bG = ctx.createLinearGradient(pad,0,pad+fillW,0);
-    bG.addColorStop(0,col.green); bG.addColorStop(1,sevColor);
-    ctx.fillStyle = bG; rrect(ctx,pad,barTopY,fillW,BH,6); ctx.fill();
-    // Detail line below bar — left side is stat, right side is severity label
-    const detY = barTopY + BH + 20;
-    ctx.fillStyle = sevColor;
-    // Left stat
-    ctx.font = T.caption; ctx.textAlign = "left";
-    ctx.fillText(detailLeft, pad, detY);
-    // Right severity — truncate if too wide to avoid overflow
-    ctx.textAlign = "right";
-    let sev = detailRight;
-    while(ctx.font=T.caption, ctx.measureText(sev).width > W-2*pad-ctx.measureText(detailLeft).width-32 && sev.length>4)
-      sev = sev.slice(0,-2)+"…";
-    ctx.fillText(sev, W-pad, detY);
+    const barY=labelY+10;
+    ctx.fillStyle="rgba(255,255,255,.10)"; rrect(ctx,pad,barY,BW,BH,5); ctx.fill();
+    const fw=Math.max(BH,BW*Math.min(100,pct)/100);
+    const bG=ctx.createLinearGradient(pad,0,pad+fw,0);
+    bG.addColorStop(0,"#10F07A"); bG.addColorStop(1,sev.col);
+    ctx.fillStyle=bG; rrect(ctx,pad,barY,fw,BH,5); ctx.fill();
+    ctx.fillStyle=sev.col; ctx.font="15px Arial,Helvetica,sans-serif";
+    ctx.textAlign="left"; ctx.fillText(statLeft, pad, barY+BH+20);
+    ctx.textAlign="right";
+    let sr=statRight;
+    while(ctx.measureText(sr).width > BW-ctx.measureText(statLeft).width-32 && sr.length>4) sr=sr.slice(0,-2)+"…";
+    ctx.fillText(sr, W-pad, barY+BH+20);
   };
+  const mStatL = mPct>=100?`${rawM.toFixed(1)}× budget`:`${Math.round(mPct)}% of budget`;
+  drawBar(pmY,          "💳  vs Monthly Budget",   Math.min(100,mPct), mSev, mStatL,       mSev.lbl);
+  drawBar(pmY+80,       "⚰️  vs Retirement Span",  rPct,               rSev, `${Math.round(rawM)} of ${retM} months`, rSev.lbl);
 
-  // Monthly bar
-  const mStatLeft  = mPct>=100 ? `${rawM.toFixed(1)}× monthly budget` : `${Math.round(mPct)}% of monthly budget`;
-  drawBar(Y.bar1Label, Y.bar1Top, "💳  vs Monthly Budget", mBar, mStatLeft, mSev.lbl, mSev.col);
-
-  // Retirement bar
-  const rStatLeft  = `${Math.round(rawM)} of ${retM} retirement months (${Math.round(rPct)}%)`;
-  drawBar(Y.bar2Label, Y.bar2Top, "⚰️  vs Retirement Span", rPct, rStatLeft, rSev.lbl, rSev.col);
-
-  // ── "COULD'VE HAD" ────────────────────────────────────────
-  const CANT_H = 94;
-  ctx.fillStyle = "rgba(252,211,77,.08)";
-  rrect(ctx,pad,Y.cantTop,W-2*pad,CANT_H,18); ctx.fill();
-  ctx.strokeStyle = "rgba(252,211,77,.20)"; ctx.lineWidth=1;
-  rrect(ctx,pad,Y.cantTop,W-2*pad,CANT_H,18); ctx.stroke();
-  ctx.fillStyle = col.gold; ctx.font = T.capBold; ctx.textAlign = "left";
-  ctx.fillText("THIS COULD'VE BEEN YOURS  💎", pad+20, Y.cantTop+28);
-  const cantStr = cant.toUpperCase();
-  ctx.textAlign = "center";
-  let cantFont = "bold 38px Arial,Helvetica,sans-serif";
-  ctx.font = cantFont;
-  if(ctx.measureText(cantStr).width > W-2*pad-48){ cantFont="bold 28px Arial,Helvetica,sans-serif"; ctx.font=cantFont; }
-  ctx.fillStyle = "#FEF3C7";
-  ctx.fillText(cantStr, W/2, Y.cantTop+72);
-
-  // ── QR CODE SECTION ──────────────────────────────────────
-  // Separator
-  ctx.strokeStyle = "rgba(255,255,255,.06)"; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(pad,Y.qrSep); ctx.lineTo(W-pad,Y.qrSep); ctx.stroke();
-
-  // Label above QR — generous gap from separator
-  ctx.fillStyle = col.text3; ctx.font = T.capBold; ctx.textAlign = "center";
-  ctx.fillText("SCAN TO RECREATE THIS SCENARIO", W/2, Y.qrLabel);
-
+  // ── QR code ───────────────────────────────────────────────
+  ctx.strokeStyle="rgba(255,255,255,.06)"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(pad,qrSepY); ctx.lineTo(W-pad,qrSepY); ctx.stroke();
+  ctx.fillStyle="#4B5563"; ctx.font="bold 15px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
+  ctx.fillText("SCAN TO RECREATE THIS SCENARIO", W/2, qrSepY+28);
   if(shareUrl){
-    const qrApi = `https://api.qrserver.com/v1/create-qr-code/?size=${QR_SIZE}x${QR_SIZE}&data=${encodeURIComponent(shareUrl)}&format=png`;
+    const qrApi=`https://api.qrserver.com/v1/create-qr-code/?size=${QR_SIZE}x${QR_SIZE}&data=${encodeURIComponent(shareUrl)}&format=png`;
     try{
-      const qrImg = await loadImage(qrApi);
-      const qrX = (W-QR_SIZE)/2;
-      // White background with generous padding — no touching the edges
-      ctx.fillStyle = "#F8FAFC";
-      rrect(ctx, qrX-14, Y.qrImgTop-14, QR_SIZE+28, QR_SIZE+28, 14); ctx.fill();
-      ctx.drawImage(qrImg, qrX, Y.qrImgTop, QR_SIZE, QR_SIZE);
+      const qrImg=await loadImage(qrApi);
+      const qrX=(W-QR_SIZE)/2;
+      ctx.fillStyle="#F8FAFC"; rrect(ctx,qrX-10,qrImgY-10,QR_SIZE+20,QR_SIZE+20,10); ctx.fill();
+      ctx.drawImage(qrImg,qrX,qrImgY,QR_SIZE,QR_SIZE);
+      ctx.fillStyle="#374151"; ctx.font="14px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
+      ctx.fillText("frugalcalculator.app", W/2, qrImgY+QR_SIZE+26);
     }catch{
-      ctx.fillStyle = col.text4; ctx.font = T.caption; ctx.textAlign = "center";
-      ctx.fillText("frugalcalculator.app", W/2, Y.qrImgTop+60);
+      ctx.fillStyle="#374151"; ctx.font="14px Arial,Helvetica,sans-serif"; ctx.textAlign="center";
+      ctx.fillText("frugalcalculator.app", W/2, qrSepY+60);
     }
   }
 
-  // Watermark — sits well below QR (Y.watermark = 1330, QR bottom = 1284+14 = 1298)
-  ctx.fillStyle = col.text4; ctx.font = T.caption; ctx.textAlign = "center";
-  ctx.fillText("frugalcalculator.app  ·  Your future self says: stop spending.", W/2, Y.watermark);
-
-  // ── BOTTOM ACCENT BAR ─────────────────────────────────────
-  ctx.fillStyle = mkAccent(); ctx.fillRect(0, Y.botBar, W, 10);
+  // ── Bottom accent ─────────────────────────────────────────
+  ctx.fillStyle = mkAcc(ctx); ctx.fillRect(0,H-10,W,10);
 
   return cvs.toDataURL("image/png");
 }
@@ -938,8 +875,8 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
             background:"rgba(107,79,157,.18)",
             border:`1px solid rgba(167,139,250,.18)`,
             borderRadius:12}}>
-            <span style={{fontSize:10,color:"#9370CC",fontWeight:800,letterSpacing:.8}}>
-              NOMINAL · BEFORE INFLATION
+            <span style={{fontSize:9,color:"#9370CC",fontWeight:400,letterSpacing:.5}}>
+              nominal · before inflation
             </span>
             <span style={{...MONO,fontSize:nominal>9999999?18:nominal>999999?22:26,
               fontWeight:700,color:"#B89EE8",letterSpacing:-1,lineHeight:1}}>
@@ -1021,30 +958,18 @@ function ResultsPanel({visible,onClose,result,quote,char,settings,onShare,onReRo
    SHARE MODAL
 ══════════════════════════════════════════════════════════════ */
 function ShareModal({result,quote,char,settings,onClose}){
-  const{nominal,months,yrs,amount,freq,presetObj}=result;
+  const{nominal,real,months,yrs,amount,freq,presetObj}=result;
   const freqLbl=FREQS.find(f=>f.id===freq)?.label.toLowerCase()||"";
   const item=presetObj?`${presetObj.e} ${presetObj.label}`:usd2(amount);
-  const[copied,setCopied]=useState(false);
   const[urlCopied,setUrlCopied]=useState(false);
   const[imgBusy,setImgBusy]=useState(false);
-  const shareText=["💸 Frugal Calculator","",`My ${freqLbl} ${item} = ${usd(real)} at retirement (inflation-adjusted).`,
-    `That's ${months} months of retirement income GONE! 😱`,"",
-    `${char.av} "${quote.substring(0,100)}..."`,""," 📲 frugalcalculator.app",].join("\n");
   const shareUrl=encodeUrl(result,settings);
-  const copyText=()=>navigator.clipboard.writeText(shareText).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);});
-  const copyUrl=()=>navigator.clipboard.writeText(shareUrl).then(()=>{setUrlCopied(true);setTimeout(()=>setUrlCopied(false),2500);});
-  const downloadImage=async()=>{
-    setImgBusy(true);
-    try{
-      const d=await generateShareImage({nominal,real:0,months,yrs,amount,freq,presetObj,char,quote,settings,shareUrl});
-      Object.assign(document.createElement("a"),{href:d,download:"frugal-shame.png"}).click();
-    }catch(e){alert("Couldn't generate image: "+e.message);}
-    finally{setImgBusy(false);}
-  };
+  const copyUrl=()=>navigator.clipboard.writeText(shareUrl)
+    .then(()=>{setUrlCopied(true);setTimeout(()=>setUrlCopied(false),2500);});
   const shareImage=async()=>{
     setImgBusy(true);
     try{
-      const d=await generateShareImage({nominal,real:0,months,yrs,amount,freq,presetObj,char,quote,settings,shareUrl});
+      const d=await generateShareImage({nominal,real,months,yrs,amount,freq,presetObj,char,quote,settings,shareUrl});
       const res=await fetch(d);const blob=await res.blob();
       const file=new File([blob],"frugal-calculator.png",{type:"image/png"});
       if(navigator.canShare?.({files:[file]}))await navigator.share({files:[file],title:"Frugal Calculator"});
@@ -1058,36 +983,44 @@ function ShareModal({result,quote,char,settings,onClose}){
       padding:20,zIndex:200,backdropFilter:"blur(14px)"}}>
       <div style={{background:"#0D0A25",border:`1px solid ${C.border}`,borderRadius:24,
         padding:24,width:"100%",maxWidth:360,maxHeight:"90vh",overflowY:"auto"}}>
+
+        {/* Preview card */}
         <div style={{background:`linear-gradient(135deg,#0A0818,${char.col}18)`,
           border:`1px solid ${char.col}44`,borderRadius:16,padding:20,marginBottom:16,textAlign:"center"}}>
-          <div style={{fontSize:11,color:char.col,fontWeight:800,letterSpacing:2,marginBottom:6}}>💸 FRUGAL CALCULATOR</div>
+          <div style={{fontSize:11,color:char.col,fontWeight:800,letterSpacing:2,marginBottom:6}}>
+            💸 FRUGAL CALCULATOR
+          </div>
           <div style={{fontSize:12,color:C.t3,marginBottom:8}}>{freqLbl} {item}</div>
-          <div style={{...MONO,fontSize:36,fontWeight:700,color:C.green,letterSpacing:-1}}>{usd(real)}</div>
-          <div style={{fontSize:11,color:C.t3,marginBottom:10}}>at retirement · {yrs} years</div>
-          <div style={{padding:"8px 14px",background:"rgba(251,146,60,.12)",border:"1px solid rgba(251,146,60,.3)",
-            borderRadius:10,display:"inline-flex",alignItems:"center",gap:8}}>
+          <div style={{...MONO,fontSize:34,fontWeight:700,color:C.green,letterSpacing:-1}}>{usd(real)}</div>
+          <div style={{fontSize:11,color:C.t3,marginBottom:10}}>inflation-adjusted · {yrs} years</div>
+          <div style={{padding:"8px 14px",background:"rgba(251,146,60,.12)",
+            border:"1px solid rgba(251,146,60,.3)",borderRadius:10,
+            display:"inline-flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:16}}>⏳</span>
             <span style={{fontSize:13,color:C.orange,fontWeight:800}}>{months} months stolen</span>
           </div>
           <div style={{marginTop:10,fontSize:10,color:C.t4,fontStyle:"italic"}}>
-            {char.av} "{quote.substring(0,80)}..."</div>
+            {char.av} "{quote.substring(0,80)}..."
+          </div>
         </div>
-        <button onClick={copyText} style={{width:"100%",padding:13,marginBottom:8,fontFamily:"inherit",
-          background:copied?"rgba(16,240,122,.2)":"rgba(16,240,122,.08)",
-          border:`1px solid ${copied?C.green:C.green+"44"}`,borderRadius:14,
-          color:C.green,fontWeight:700,cursor:"pointer",fontSize:14,transition:"all .2s"}}>
-          {copied?"✅ Copied!":"📋 Copy Share Text"}
-        </button>
-        <button onClick={shareImage} disabled={imgBusy} style={{width:"100%",padding:13,marginBottom:8,
-          fontFamily:"inherit",background:"rgba(167,139,250,.08)",border:`1px solid ${C.purple}44`,
-          borderRadius:14,color:C.purple,fontWeight:700,cursor:imgBusy?"wait":"pointer",
-          fontSize:14,transition:"all .2s",opacity:imgBusy?0.6:1}}>
+
+        {/* Primary: Share as Image */}
+        <button onClick={shareImage} disabled={imgBusy} style={{
+          width:"100%",padding:15,marginBottom:10,fontFamily:"inherit",
+          background:imgBusy?"rgba(16,240,122,.06)":"rgba(16,240,122,.12)",
+          border:`1.5px solid ${C.green}66`,borderRadius:14,
+          color:C.green,fontWeight:800,fontSize:15,
+          cursor:imgBusy?"wait":"pointer",transition:"all .2s",
+          opacity:imgBusy?0.6:1}}>
           {imgBusy?"⏳ Generating...":"🖼️ Share as Image"}
         </button>
-        <div style={{background:"rgba(255,255,255,.03)",border:`1px solid ${C.border}`,borderRadius:14,padding:14,marginBottom:8}}>
+
+        {/* Shareable link */}
+        <div style={{background:"rgba(255,255,255,.03)",border:`1px solid ${C.border}`,
+          borderRadius:14,padding:14,marginBottom:10}}>
           <div style={{fontSize:11,color:C.t3,marginBottom:8,fontWeight:600}}>🔗 Shareable Link</div>
-          <div style={{...MONO,fontSize:10,color:C.t4,wordBreak:"break-all",lineHeight:1.6,marginBottom:10,
-            padding:"6px 8px",background:"rgba(0,0,0,.2)",borderRadius:8}}>
+          <div style={{...MONO,fontSize:10,color:C.t4,wordBreak:"break-all",lineHeight:1.6,
+            marginBottom:10,padding:"6px 8px",background:"rgba(0,0,0,.2)",borderRadius:8}}>
             {shareUrl.length>80?shareUrl.substring(0,80)+"...":shareUrl}
           </div>
           <button onClick={copyUrl} style={{width:"100%",padding:10,fontFamily:"inherit",
@@ -1097,15 +1030,20 @@ function ShareModal({result,quote,char,settings,onClose}){
             {urlCopied?"✅ Link Copied!":"📎 Copy Link"}
           </button>
         </div>
+
+        {/* Native share */}
         {typeof navigator!=="undefined"&&navigator.share&&(
-          <button onClick={()=>navigator.share({title:"Frugal Calculator",text:shareText,url:shareUrl}).catch(()=>{})}
-            style={{width:"100%",padding:13,marginBottom:8,background:"rgba(255,255,255,.04)",
+          <button onClick={shareImage}
+            style={{width:"100%",padding:12,marginBottom:10,background:"rgba(255,255,255,.04)",
               border:`1px solid ${C.border}`,borderRadius:14,color:C.t1,
-              fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>📤 Share via…</button>
+              fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>
+            📤 Share via…
+          </button>
         )}
+
         <button onClick={onClose} style={{width:"100%",padding:11,background:"none",
-          border:`1px solid ${C.border}`,borderRadius:14,color:C.t3,cursor:"pointer",
-          fontSize:13,fontFamily:"inherit"}}>Close</button>
+          border:`1px solid ${C.border}`,borderRadius:14,color:C.t3,
+          cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>Close</button>
       </div>
     </div>
   );
