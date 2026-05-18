@@ -167,7 +167,7 @@ async function generateShareImage({ nominal, real, months, yrs, amount, freq, pr
 
   // ── Sizing constants (from ResultsPanel CSS, scaled) ──────
   const pad    = s(14);   // horizontal outer padding
-  const bPad   = s(16);   // bubble / card inner padding
+  const bPad   = s(12);   // bubble / card inner padding (tightened)
   const bR20   = s(20);   // borderRadius 20
   const bR16   = s(16);   // borderRadius 16
   const bR14   = s(14);   // borderRadius 14
